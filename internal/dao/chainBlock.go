@@ -160,9 +160,12 @@ func (d *Dao) GetBlockListCursor(ctx context.Context, limit int, before, after u
 func (d *Dao) GetBlockByHash(c context.Context, hash string) *model.ChainBlock {
 	var block model.ChainBlock
 	blockNum, _ := d.GetBestBlockNum(c)
+	if blockNum == 0 {
+		blockNum, _ = d.GetFinalizedBlockNum(c)
+	}
 	for index := int(blockNum / uint64(model.SplitTableBlockNum)); index >= 0; index-- {
-		query := d.db.Scopes(model.TableNameFunc(model.ChainBlock{BlockNum: uint(index) * (model.SplitTableBlockNum)})).Where("hash = ?", hash).Scan(&block)
-		if query != nil && query.Error == nil {
+		query := d.db.WithContext(c).Scopes(model.TableNameFunc(model.ChainBlock{BlockNum: uint(index) * (model.SplitTableBlockNum)})).Where("hash = ?", hash).First(&block)
+		if query != nil && query.Error == nil && query.RowsAffected > 0 {
 			return &block
 		}
 	}

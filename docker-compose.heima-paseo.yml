@@ -14,7 +14,7 @@ services:
       - ./data/mysql:/var/lib/mysql
     networks:
       - subscan_paseo_net
-    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci --max-connections=1000
 
   redis:
     image: redis:7-alpine

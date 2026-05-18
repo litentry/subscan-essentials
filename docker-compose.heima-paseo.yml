@@ -1,0 +1,91 @@
+version: "2.4"
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: always
+    environment:
+      MYSQL_DATABASE: subscan
+      MYSQL_ROOT_PASSWORD: subscan2024heima
+      MYSQL_ALLOW_EMPTY_PASSWORD: 'no'
+    ports:
+      - '23306:3306'
+    volumes:
+      - ./data/mysql:/var/lib/mysql
+    networks:
+      - subscan_paseo_net
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - '26379:6379'
+    volumes:
+      - ./data/redis:/data
+    networks:
+      - subscan_paseo_net
+
+  subscan-api:
+    build: .
+    image: subscan/api:paseo
+    restart: always
+    environment: &app_base
+      MYSQL_HOST: mysql
+      MYSQL_PASS: 'subscan2024heima'
+      MYSQL_USER: 'root'
+      MYSQL_DB: 'subscan'
+      REDIS_ADDR: redis:6379
+      CHAIN_WS_ENDPOINT: 'wss://rpc.paseo-parachain.heima.network'
+      ETH_RPC: 'https://rpc.paseo-parachain.heima.network'
+      NETWORK_NODE: 'heima-paseo'
+      DEPLOY_ENV: 'prod'
+    ports:
+      - '4499:4399'
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - subscan_paseo_net
+
+  subscan-observer:
+    environment:
+      <<: *app_base
+    image: subscan/api:paseo
+    restart: always
+    command: ["start","subscribe"]
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - subscan_paseo_net
+
+  subscan-worker:
+    environment:
+      <<: *app_base
+      WORKER_GOROUTINE_COUNT: '20'
+    image: subscan/api:paseo
+    restart: always
+    command: ["start","worker"]
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - subscan_paseo_net
+
+  subscan-worker-2:
+    environment:
+      <<: *app_base
+      WORKER_GOROUTINE_COUNT: '20'
+    image: subscan/api:paseo
+    restart: always
+    command: ["start","worker"]
+    depends_on:
+      - mysql
+      - redis
+    networks:
+      - subscan_paseo_net
+
+networks:
+  subscan_paseo_net:
+    driver: bridge

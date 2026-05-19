@@ -285,7 +285,7 @@ func logsHandle(c *gin.Context) {
 }
 
 type checkSearchParams struct {
-	Hash string `json:"hash" binding:"len=66"`
+	Hash string `json:"hash" binding:"required"`
 }
 
 // checkSearchHashHandle handler check hash type, block or extrinsic or evm tx hash
@@ -300,6 +300,15 @@ func checkSearchHashHandle(c *gin.Context) {
 	p := new(checkSearchParams)
 	if err := c.MustBindWith(p, binding.JSON); err != nil {
 		toJson(c, nil, err)
+		return
+	}
+
+	if address.VerifyEthereumAddress(p.Hash) {
+		toJson(c, map[string]string{"hash_type": "evm_account"}, nil)
+		return
+	}
+	if len(p.Hash) != 66 {
+		toJson(c, nil, util.ParamsError)
 		return
 	}
 

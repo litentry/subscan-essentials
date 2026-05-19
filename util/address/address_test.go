@@ -30,6 +30,7 @@ func Test_SS58Address(t *testing.T) {
 func TestVerifyEthereumAddress(t *testing.T) {
 	assert.True(t, VerifyEthereumAddress("0x3a370c6e4af506123c30e091a1cbfbc3728e1ec5"))
 	assert.True(t, VerifyEthereumAddress("3a370c6e4af506123c30e091a1cbfbc3728e1ec5"))
+	assert.True(t, VerifyEthereumAddress("0xdE644936D5B7d5d42032fd08bbA42Fbbfd6663Bc"))
 	assert.False(t, VerifyEthereumAddress("0x3a370c6e4af506123c30e091a1cbfbc3728e1ec"))
 }
 

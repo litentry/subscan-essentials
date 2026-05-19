@@ -1,14 +1,18 @@
 package http
 
 import (
+	"context"
 	"errors"
-	"github.com/itering/subscan/model"
-	"github.com/itering/subscan/share/token"
-	"github.com/itering/subscan/util/address"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
+	"github.com/itering/subscan/model"
+	"github.com/itering/subscan/plugins"
+	evmDao "github.com/itering/subscan/plugins/evm/dao"
+	"github.com/itering/subscan/share/token"
 	"github.com/itering/subscan/util"
+	"github.com/itering/subscan/util/address"
 )
 
 // @Summary Current network metadata
@@ -285,11 +289,11 @@ func logsHandle(c *gin.Context) {
 }
 
 type checkSearchParams struct {
-	Hash string `json:"hash" binding:"len=66"`
+	Hash string `json:"hash" binding:"required"`
 }
 
-// checkSearchHashHandle handler check hash type, block or extrinsic or evm tx hash
-// @Summary Check hash type
+// checkSearchHashHandle handler check search type, block/extrinsic/evm hash or account address
+// @Summary Check search type
 // @Tags hash
 // @Accept json
 // @Produce json
@@ -304,17 +308,60 @@ func checkSearchHashHandle(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
+	search := strings.TrimSpace(p.Hash)
 
-	if data := svc.GetBlockByHash(ctx, p.Hash); data != nil {
+	switch address.DetectSearchType(search) {
+	case address.SearchTypeEvmAddress:
+		toJson(c, map[string]string{"hash_type": evmAddressSearchType(ctx, search)}, nil)
+		return
+	case address.SearchTypeSubstrateAddress:
+		toJson(c, map[string]string{"hash_type": address.SearchTypeSubstrateAddress}, nil)
+		return
+	case address.SearchTypeHash:
+	default:
+		toJson(c, nil, util.ParamsError)
+		return
+	}
+
+	if data := svc.GetBlockByHash(ctx, search); data != nil {
 		toJson(c, map[string]string{"hash_type": "block"}, nil)
 		return
 	}
-	if data := svc.GetExtrinsicByHash(ctx, p.Hash); data != nil {
+	if data := svc.GetExtrinsicByHash(ctx, search); data != nil {
 		toJson(c, map[string]string{"hash_type": "extrinsic"}, nil)
 		return
 	}
-	// todo evm tx hash
+	if hashType := evmHashSearchType(ctx, search); hashType != "" {
+		toJson(c, map[string]string{"hash_type": hashType}, nil)
+		return
+	}
 	toJson(c, nil, util.RecordNotFound)
+}
+
+func evmAddressSearchType(ctx context.Context, search string) string {
+	if evmPluginEnabled() && evmDao.ContractExists(ctx, address.Format(search)) {
+		return "evm_contract"
+	}
+	return address.SearchTypeEvmAddress
+}
+
+func evmHashSearchType(ctx context.Context, search string) string {
+	if !evmPluginEnabled() {
+		return ""
+	}
+	srv := evmDao.ApiSrv{}
+	if srv.BlockByHash(ctx, search) != nil {
+		return "evm_block"
+	}
+	if srv.GetTransactionByHash(ctx, search) != nil {
+		return "evm_transaction"
+	}
+	return ""
+}
+
+func evmPluginEnabled() bool {
+	evm, ok := plugins.RegisteredPlugins["evm"]
+	return ok && evm.Enable()
 }
 
 // @Summary Get runtime list

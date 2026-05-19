@@ -6,6 +6,7 @@ import (
 	"github.com/itering/subscan/model"
 	balanceModel "github.com/itering/subscan/plugins/balance/model"
 	"github.com/itering/subscan/util"
+	"github.com/itering/subscan/util/address"
 	"github.com/shopspring/decimal"
 	"strings"
 )
@@ -318,8 +319,13 @@ type EtherscanContractCreationRes struct {
 }
 
 func (a *ApiSrv) API_GetContractCreation(ctx context.Context, addresses []string) (res []EtherscanContractCreationRes) {
+	for i, addr := range addresses {
+		if formatted := address.Format(addr); formatted != "" {
+			addresses[i] = formatted
+		}
+	}
 	var contracts []Contract
-	sg.db.WithContext(ctx).Model(&Contract{}).Where("contract_address in ?", addresses).Find(&contracts)
+	sg.db.WithContext(ctx).Model(&Contract{}).Where("address in ?", addresses).Find(&contracts)
 
 	for _, v := range contracts {
 		res = append(res, EtherscanContractCreationRes{

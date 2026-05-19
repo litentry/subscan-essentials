@@ -2,6 +2,8 @@ package http
 
 import (
 	"context"
+	"strings"
+
 	"github.com/itering/subscan/model"
 	balanceModel "github.com/itering/subscan/plugins/balance/model"
 	"github.com/itering/subscan/plugins/evm/dao"
@@ -125,7 +127,7 @@ func (m MockServer) API_TokenEventRes(ctx context.Context, opts ...model.Option)
 }
 
 func (m MockServer) API_ContractSourceCode(_ context.Context, c *dao.Contract) *dao.EtherscanContractSourceCodeRes {
-	return nil
+	return &dao.EtherscanContractSourceCodeRes{ContractName: c.Address}
 }
 
 func (m MockServer) API_GetContractCreation(ctx context.Context, addresses []string) (res []dao.EtherscanContractCreationRes) {
@@ -137,6 +139,9 @@ func (m MockServer) API_GetContractCreation(ctx context.Context, addresses []str
 }
 
 func (m MockServer) ContractsByAddr(ctx context.Context, address string) (contract *dao.Contract) {
+	if address != strings.ToLower(address) {
+		return nil
+	}
 	return &dao.Contract{Address: address, VerifyStatus: "perfect"}
 }
 

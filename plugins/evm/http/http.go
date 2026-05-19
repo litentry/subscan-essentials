@@ -6,6 +6,7 @@ import (
 	"github.com/itering/subscan/model"
 	"github.com/itering/subscan/plugins/evm/contract"
 	"github.com/itering/subscan/plugins/evm/dao"
+	"github.com/itering/subscan/util/address"
 	"github.com/itering/subscan/util/validator"
 	"net/http"
 )
@@ -332,6 +333,7 @@ func contractHandle(w http.ResponseWriter, r *http.Request) error {
 		toJson(w, 10001, nil, err)
 		return nil
 	}
+	p.Address = address.Format(p.Address)
 	contract := srv.ContractsByAddr(r.Context(), p.Address)
 	if contract == nil {
 		toJson(w, 10002, nil, fmt.Errorf("contract not found"))

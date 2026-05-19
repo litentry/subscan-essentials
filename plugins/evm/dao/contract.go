@@ -12,6 +12,7 @@ import (
 	"github.com/itering/subscan/plugins/evm/feature/delegateProxy"
 	"github.com/itering/subscan/share/web3"
 	"github.com/itering/subscan/util"
+	addressUtil "github.com/itering/subscan/util/address"
 	"regexp"
 	"strconv"
 	"strings"
@@ -186,8 +187,12 @@ func (c *Contract) hasStorage(_ context.Context, storageName string) bool {
 }
 
 func (t *Transaction) NewContract(ctx context.Context) error {
+	contractAddress := addressUtil.Format(t.Contract)
+	if contractAddress == "" {
+		contractAddress = t.Contract
+	}
 	contract := &Contract{
-		Address:        t.Contract,
+		Address:        contractAddress,
 		CreationCode:   t.InputData,
 		DeployAt:       t.BlockTimestamp,
 		BlockNum:       t.BlockNum,
@@ -204,6 +209,9 @@ func ContractAddr(ctx context.Context) (list []string) {
 }
 
 func IsContract(ctx context.Context, addr string) bool {
+	if formatted := addressUtil.Format(addr); formatted != "" {
+		addr = formatted
+	}
 	return util.StringInSlice(addr, ContractAddr(ctx))
 }
 
@@ -217,6 +225,9 @@ func VerifyContractCount(ctx context.Context) (count int64) {
 }
 
 func incrContractTransactionCount(ctx context.Context, address string) {
+	if formatted := addressUtil.Format(address); formatted != "" {
+		address = formatted
+	}
 	sg.db.WithContext(ctx).Model(Contract{}).
 		Where("address = ?", address).
 		UpdateColumns(map[string]interface{}{"transaction_count": gorm.Expr("transaction_count + 1")})
@@ -231,6 +242,11 @@ type ContractDisplay struct {
 func ContractsList(ctx context.Context, page, row int, addresses []string, Verified bool, search, order, orderField string) (contracts []ContractListJson, count int64) {
 	query := sg.db.Model(Contract{})
 	if len(addresses) > 0 {
+		for i, addr := range addresses {
+			if formatted := addressUtil.Format(addr); formatted != "" {
+				addresses[i] = formatted
+			}
+		}
 		query.Where("address in (?)", addresses)
 	}
 	if Verified {
@@ -249,6 +265,11 @@ func ContractsList(ctx context.Context, page, row int, addresses []string, Verif
 }
 
 func ContractsByAddrList(ctx context.Context, addresses []string) (contracts []ContractSampleJson) {
+	for i, addr := range addresses {
+		if formatted := addressUtil.Format(addr); formatted != "" {
+			addresses[i] = formatted
+		}
+	}
 	sg.db.Model(Contract{}).Where("address in (?)", addresses).Scan(&contracts)
 	for k, v := range contracts {
 		if len(v.Abi) > 0 && v.Abi.String() != "null" {
@@ -264,6 +285,9 @@ func ContractMethodList(ctx context.Context) (list []datatypes.JSON, err error) 
 }
 
 func ContractsByAddr(ctx context.Context, contracts string) (contract *Contract) {
+	if formatted := addressUtil.Format(contracts); formatted != "" {
+		contracts = formatted
+	}
 	if q := sg.db.Model(Contract{}).Where("address = ?", contracts).First(&contract); q.Error != nil {
 		return nil
 	}
@@ -302,6 +326,9 @@ func FindAbiMethodIdentifiers(_ context.Context, abiRaw []byte) []byte {
 }
 
 func GetContract(ctx context.Context, address string) *Contract {
+	if formatted := addressUtil.Format(address); formatted != "" {
+		address = formatted
+	}
 	var contract Contract
 	if q := sg.db.WithContext(ctx).Model(Contract{}).Where("address = ?", address).First(&contract); q.Error != nil {
 		return nil

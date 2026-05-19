@@ -328,6 +328,7 @@ func etherscanHandle(w http.ResponseWriter, r *http.Request) error {
 			toJson(w, 0, nil, err)
 			return nil
 		}
+		p.Address = address.Format(p.Address)
 		contract := srv.ContractsByAddr(r.Context(), p.Address)
 		if contract == nil {
 			etherscanRes(w, 0, nil, ErrRecordNotFound)
@@ -343,6 +344,7 @@ func etherscanHandle(w http.ResponseWriter, r *http.Request) error {
 			toJson(w, 0, nil, err)
 			return nil
 		}
+		p.Address = address.Format(p.Address)
 		contract := srv.ContractsByAddr(r.Context(), p.Address)
 		if contract == nil {
 			etherscanRes(w, 0, nil, ErrRecordNotFound)
@@ -361,7 +363,7 @@ func etherscanHandle(w http.ResponseWriter, r *http.Request) error {
 		var addresses []string
 		for _, v := range strings.Split(p.ContractAddresses, ",") {
 			if address.VerifyEthereumAddress(v) {
-				addresses = append(addresses, v)
+				addresses = append(addresses, address.Format(v))
 			} else {
 				etherscanRes(w, 0, nil, InvalidParam)
 				return nil
@@ -502,7 +504,7 @@ func etherscanHandle(w http.ResponseWriter, r *http.Request) error {
 			return nil
 		}
 
-		localContract := srv.ContractsByAddr(r.Context(), util.AddHex(p.Guid))
+		localContract := srv.ContractsByAddr(r.Context(), address.Format(p.Guid))
 
 		if localContract == nil {
 			etherscanRes(w, 0, nil, ErrRecordNotFound)

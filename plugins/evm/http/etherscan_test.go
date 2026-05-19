@@ -82,19 +82,25 @@ func TestEtherscanHandle(t *testing.T) {
 		},
 		{
 			name:       "Valid contract-getABI request",
-			query:      "module=contract&action=getabi&address=0x66b8c60c79dfad02fc04f1f13aab0f6feff8615b",
+			query:      "module=contract&action=getabi&address=0x66b8C60C79dFAd02fc04F1f13AaB0f6FefF8615B",
+			wantStatus: http.StatusOK,
+			wantBody:   `"status":1`,
+		},
+		{
+			name:       "Valid contract-getSourceCode request",
+			query:      "module=contract&action=getsourcecode&address=0x66b8C60C79dFAd02fc04F1f13AaB0f6FefF8615B",
 			wantStatus: http.StatusOK,
 			wantBody:   `"status":1`,
 		},
 		{
 			name:       "Valid contract-getContractCreation request",
-			query:      "module=contract&action=getcontractcreation&contractaddresses=0x66b8c60c79dfad02fc04f1f13aab0f6feff8615b",
+			query:      "module=contract&action=getcontractcreation&contractaddresses=0x66b8C60C79dFAd02fc04F1f13AaB0f6FefF8615B",
 			wantStatus: http.StatusOK,
 			wantBody:   `"status":1`,
 		},
 		{
 			name:       "Valid contract-checkVerifyStatus request",
-			query:      "module=contract&action=checkverifystatus&guid=0x66b8c60c79dfad02fc04f1f13aab0f6feff8615b",
+			query:      "module=contract&action=checkverifystatus&guid=0x66b8C60C79dFAd02fc04F1f13AaB0f6FefF8615B",
 			wantStatus: http.StatusOK,
 			wantBody:   `"status":1`,
 		},
@@ -120,6 +126,38 @@ func TestEtherscanHandle(t *testing.T) {
 
 			if !strings.Contains(rr.Body.String(), tt.wantBody) {
 				t.Errorf("Handler returned unexpected body: got %v want %v", rr.Body.String(), tt.wantBody)
+			}
+		})
+	}
+}
+
+func TestContractHandleNormalizesIssueChecksumAddresses(t *testing.T) {
+	addresses := []string{
+		"0x14C23B5D1cE20c094af643a20e6b0972dAD12aa8",
+		"0x76D574a107727bE87fc1422661A030FEFda70786",
+		"0x8396dEc50ff755d6DE7728DABB00Be2eFBCdf4dF",
+		"0x1801ded1a4FBD8c9224Ab18B9EcbB293B8674c06",
+	}
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = contractHandle(w, r)
+	})
+
+	for _, addr := range addresses {
+		t.Run(addr, func(t *testing.T) {
+			req, err := http.NewRequest("POST", "/contract", strings.NewReader(`{"address":"`+addr+`"}`))
+			if err != nil {
+				t.Fatalf("Failed to create request: %v", err)
+			}
+
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, req)
+
+			if status := rr.Code; status != http.StatusOK {
+				t.Errorf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
+			}
+			want := `"address":"` + strings.ToLower(addr) + `"`
+			if !strings.Contains(rr.Body.String(), want) {
+				t.Errorf("Handler did not return normalized contract address: got %v", rr.Body.String())
 			}
 		})
 	}

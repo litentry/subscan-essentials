@@ -85,7 +85,7 @@ const (
 	VerifyStandardJsonFile = "StandardJson"
 )
 
-func (c *Contract) TableName() string {
+func (c Contract) TableName() string {
 	return "evm_contracts"
 }
 
@@ -208,7 +208,9 @@ func IsContract(ctx context.Context, addr string) bool {
 }
 
 func ContractCount(ctx context.Context) int64 {
-	return int64(len(ContractAddr(ctx)))
+	var count int64
+	sg.db.WithContext(ctx).Model(&Contract{}).Count(&count)
+	return count
 }
 
 func VerifyContractCount(ctx context.Context) (count int64) {

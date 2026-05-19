@@ -27,6 +27,11 @@ func Router() []router.Http {
 		{"contracts", contractsHandle, http.MethodPost},
 		{"contract/solcs", solcVersions, http.MethodPost},
 		{"contract/resolcs", resolcVersions, http.MethodPost},
+		{"agentkeys/contracts", agentKeysContractsHandle, http.MethodPost},
+		{"agentkeys/contract", agentKeysContractHandle, http.MethodPost},
+		{"agentkeys/events", agentKeysEventsHandle, http.MethodPost},
+		{"agentkeys/actor", agentKeysActorHandle, http.MethodPost},
+		{"agentkeys/search", agentKeysSearchHandle, http.MethodPost},
 
 		// token holder
 		{"token/holder", tokenHolderHandle, http.MethodPost},

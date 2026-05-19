@@ -3,8 +3,11 @@ package http
 import (
 	"errors"
 	"github.com/itering/subscan/model"
+	"github.com/itering/subscan/plugins/evm/agentkeys"
+	evmDao "github.com/itering/subscan/plugins/evm/dao"
 	"github.com/itering/subscan/share/token"
 	"github.com/itering/subscan/util/address"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
@@ -285,7 +288,7 @@ func logsHandle(c *gin.Context) {
 }
 
 type checkSearchParams struct {
-	Hash string `json:"hash" binding:"len=66"`
+	Hash string `json:"hash" binding:"required,min=1,max=66"`
 }
 
 // checkSearchHashHandle handler check hash type, block or extrinsic or evm tx hash
@@ -304,16 +307,28 @@ func checkSearchHashHandle(c *gin.Context) {
 	}
 
 	ctx := c.Request.Context()
+	query := strings.TrimSpace(p.Hash)
+	if contract, ok := agentkeys.ContractByAddress(query); ok {
+		toJson(c, map[string]string{"hash_type": "contract", "contract_type": "agentkeys", "address": contract.Address, "name": contract.Name}, nil)
+		return
+	}
+	if len(query) != 66 {
+		toJson(c, nil, util.RecordNotFound)
+		return
+	}
 
-	if data := svc.GetBlockByHash(ctx, p.Hash); data != nil {
+	if data := svc.GetBlockByHash(ctx, query); data != nil {
 		toJson(c, map[string]string{"hash_type": "block"}, nil)
 		return
 	}
-	if data := svc.GetExtrinsicByHash(ctx, p.Hash); data != nil {
+	if data := svc.GetExtrinsicByHash(ctx, query); data != nil {
 		toJson(c, map[string]string{"hash_type": "extrinsic"}, nil)
 		return
 	}
-	// todo evm tx hash
+	if strings.EqualFold(query, agentkeys.BootstrapTx) || evmDao.GetTransactionByHash(ctx, query) != nil {
+		toJson(c, map[string]string{"hash_type": "evm_transaction"}, nil)
+		return
+	}
 	toJson(c, nil, util.RecordNotFound)
 }
 

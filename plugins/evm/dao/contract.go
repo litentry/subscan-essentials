@@ -85,7 +85,7 @@ const (
 	VerifyStandardJsonFile = "StandardJson"
 )
 
-func (c *Contract) TableName() string {
+func (c Contract) TableName() string {
 	return "evm_contracts"
 }
 
@@ -136,7 +136,7 @@ func (c *Contract) VerifySuccess(ctx context.Context, verifyRes *evmContract.Ver
 	}
 	c.afterVerify(ctx)
 
-	return sg.db.Model(Contract{}).Where("address = ?", c.Address).Updates(c).Error
+	return sg.db.Model(&Contract{}).Where("address = ?", c.Address).Updates(c).Error
 }
 
 func (c *Contract) afterVerify(ctx context.Context) {
@@ -158,7 +158,7 @@ func (c *Contract) afterVerify(ctx context.Context) {
 
 func setContractProxyImplementation(ctx context.Context, contractAddress, implementation string) {
 	if contract := GetContract(ctx, contractAddress); contract != nil && contract.ProxyImplementation != "" {
-		sg.db.Model(Contract{}).Where("address = ?", contractAddress).Update("proxy_implementation", implementation)
+		sg.db.Model(&Contract{}).Where("address = ?", contractAddress).Update("proxy_implementation", implementation)
 	}
 }
 
@@ -199,7 +199,7 @@ func (t *Transaction) NewContract(ctx context.Context) error {
 }
 
 func ContractAddr(ctx context.Context) (list []string) {
-	sg.db.WithContext(ctx).Model(Contract{}).Pluck("address", &list)
+	sg.db.WithContext(ctx).Model(&Contract{}).Pluck("address", &list)
 	return
 }
 
@@ -208,16 +208,18 @@ func IsContract(ctx context.Context, addr string) bool {
 }
 
 func ContractCount(ctx context.Context) int64 {
-	return int64(len(ContractAddr(ctx)))
+	var count int64
+	sg.db.WithContext(ctx).Model(&Contract{}).Count(&count)
+	return count
 }
 
 func VerifyContractCount(ctx context.Context) (count int64) {
-	sg.db.WithContext(ctx).Model(Contract{}).Where("verify_status !=''").Count(&count)
+	sg.db.WithContext(ctx).Model(&Contract{}).Where("verify_status !=''").Count(&count)
 	return
 }
 
 func incrContractTransactionCount(ctx context.Context, address string) {
-	sg.db.WithContext(ctx).Model(Contract{}).
+	sg.db.WithContext(ctx).Model(&Contract{}).
 		Where("address = ?", address).
 		UpdateColumns(map[string]interface{}{"transaction_count": gorm.Expr("transaction_count + 1")})
 }
@@ -229,7 +231,7 @@ type ContractDisplay struct {
 }
 
 func ContractsList(ctx context.Context, page, row int, addresses []string, Verified bool, search, order, orderField string) (contracts []ContractListJson, count int64) {
-	query := sg.db.Model(Contract{})
+	query := sg.db.Model(&Contract{})
 	if len(addresses) > 0 {
 		query.Where("address in (?)", addresses)
 	}
@@ -249,7 +251,7 @@ func ContractsList(ctx context.Context, page, row int, addresses []string, Verif
 }
 
 func ContractsByAddrList(ctx context.Context, addresses []string) (contracts []ContractSampleJson) {
-	sg.db.Model(Contract{}).Where("address in (?)", addresses).Scan(&contracts)
+	sg.db.Model(&Contract{}).Where("address in (?)", addresses).Scan(&contracts)
 	for k, v := range contracts {
 		if len(v.Abi) > 0 && v.Abi.String() != "null" {
 			contracts[k].EventIdentifiers = findEventIdentifiers(ctx, v.Abi)
@@ -259,12 +261,12 @@ func ContractsByAddrList(ctx context.Context, addresses []string) (contracts []C
 }
 
 func ContractMethodList(ctx context.Context) (list []datatypes.JSON, err error) {
-	err = sg.db.WithContext(ctx).Model(Contract{}).Not("verify_status = ''").Where("method_identifiers IS NOT NULL").Pluck("method_identifiers", &list).Error
+	err = sg.db.WithContext(ctx).Model(&Contract{}).Not("verify_status = ''").Where("method_identifiers IS NOT NULL").Pluck("method_identifiers", &list).Error
 	return
 }
 
 func ContractsByAddr(ctx context.Context, contracts string) (contract *Contract) {
-	if q := sg.db.Model(Contract{}).Where("address = ?", contracts).First(&contract); q.Error != nil {
+	if q := sg.db.Model(&Contract{}).Where("address = ?", contracts).First(&contract); q.Error != nil {
 		return nil
 	}
 
@@ -303,7 +305,7 @@ func FindAbiMethodIdentifiers(_ context.Context, abiRaw []byte) []byte {
 
 func GetContract(ctx context.Context, address string) *Contract {
 	var contract Contract
-	if q := sg.db.WithContext(ctx).Model(Contract{}).Where("address = ?", address).First(&contract); q.Error != nil {
+	if q := sg.db.WithContext(ctx).Model(&Contract{}).Where("address = ?", address).First(&contract); q.Error != nil {
 		return nil
 	}
 	return &contract

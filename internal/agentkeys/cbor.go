@@ -15,6 +15,7 @@ const (
 	cborText
 	cborBool
 	cborNull
+	cborArray
 	cborMap
 )
 
@@ -24,6 +25,7 @@ type cborValue struct {
 	b     []byte
 	s     string
 	bool  bool
+	array []cborValue
 	pairs []cborPair
 	raw   []byte
 }
@@ -89,6 +91,20 @@ func (p *cborParser) parse() (cborValue, error) {
 		s := string(p.data[p.off : p.off+int(n)])
 		p.off += int(n)
 		return cborValue{kind: cborText, s: s, raw: p.data[start:p.off]}, nil
+	case 4:
+		n, err := p.readArgument(ai)
+		if err != nil {
+			return cborValue{}, err
+		}
+		items := make([]cborValue, 0, n)
+		for i := uint64(0); i < n; i++ {
+			item, err := p.parse()
+			if err != nil {
+				return cborValue{}, fmt.Errorf("array item %d: %w", i, err)
+			}
+			items = append(items, item)
+		}
+		return cborValue{kind: cborArray, array: items, raw: p.data[start:p.off]}, nil
 	case 5:
 		n, err := p.readArgument(ai)
 		if err != nil {
@@ -258,6 +274,20 @@ func appendCanonical(out *[]byte, v interface{}) error {
 			m[k] = v
 		}
 		return appendCanonicalMap(out, m)
+	case []interface{}:
+		appendMajor(out, 4, uint64(len(x)))
+		for i := range x {
+			if err := appendCanonical(out, x[i]); err != nil {
+				return fmt.Errorf("encode array item %d: %w", i, err)
+			}
+		}
+	case []string:
+		appendMajor(out, 4, uint64(len(x)))
+		for i := range x {
+			if err := appendCanonical(out, x[i]); err != nil {
+				return fmt.Errorf("encode array item %d: %w", i, err)
+			}
+		}
 	case cborValue:
 		*out = append(*out, x.raw...)
 	default:

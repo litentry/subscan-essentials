@@ -3,6 +3,7 @@ package agentkeys
 import (
 	"context"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -108,11 +109,11 @@ func TestCriticalOpKindRenderers(t *testing.T) {
 			body: map[string]interface{}{
 				"rail":         "stripe",
 				"ref":          "invoice-123",
-				"amount_minor": uint64(12345),
+				"amount_minor": "12345",
 				"currency":     "USD",
 			},
 			assertion: func(t *testing.T, rendered map[string]interface{}) {
-				assert.Equal(t, uint64(12345), rendered["amount_minor"])
+				assert.Equal(t, "12345", rendered["amount_minor"])
 				assert.Equal(t, "USD", rendered["currency"])
 			},
 		},
@@ -173,6 +174,31 @@ func TestUnknownOpKindNonBreakFallback(t *testing.T) {
 		assert.Equal(t, opKind, fallback.OpKindByte)
 		assert.Equal(t, base64.StdEncoding.EncodeToString(opBodyBytes), fallback.OpBodyB64)
 	}
+}
+
+func TestUnknownOpKindOpaqueArrayBodyDoesNotBreak(t *testing.T) {
+	opBody := []interface{}{"future", uint64(7), map[string]interface{}{"nested": []interface{}{"shape"}}}
+	opBodyBytes, err := encodeCanonical(opBody)
+	require.NoError(t, err)
+	cborBytes, err := EncodeCanonicalEnvelope(map[string]interface{}{
+		"version":           uint8(1),
+		"ts_unix":           uint64(1710000005),
+		"actor_omni":        bytesOf(0x44),
+		"operator_omni":     bytesOf(0x55),
+		"op_kind":           uint8(250),
+		"op_body":           opBody,
+		"result":            uint8(0),
+		"intent_text":       nil,
+		"intent_commitment": nil,
+	})
+	require.NoError(t, err)
+
+	decoded, err := DecodeEnvelope(cborBytes, "")
+	require.NoError(t, err)
+	fallback, ok := decoded.Body.(UnknownOpBody)
+	require.True(t, ok)
+	assert.Equal(t, uint8(250), fallback.OpKindByte)
+	assert.Equal(t, base64.StdEncoding.EncodeToString(opBodyBytes), fallback.OpBodyB64)
 }
 
 func TestAuditEnvelopeEvidenceMatrix(t *testing.T) {
@@ -256,7 +282,7 @@ func TestAuditEnvelopeEvidenceMatrix(t *testing.T) {
 			body: map[string]interface{}{
 				"rail":         "stripe",
 				"ref":          "invoice-123",
-				"amount_minor": uint64(12345),
+				"amount_minor": "12345",
 				"currency":     "USD",
 			},
 			assertBody: func(t *testing.T, body interface{}) {
@@ -264,7 +290,7 @@ func TestAuditEnvelopeEvidenceMatrix(t *testing.T) {
 				require.True(t, ok)
 				assert.Equal(t, "stripe", rendered["rail"])
 				assert.Equal(t, "invoice-123", rendered["ref"])
-				assert.Equal(t, uint64(12345), rendered["amount_minor"])
+				assert.Equal(t, "12345", rendered["amount_minor"])
 				assert.Equal(t, "USD", rendered["currency"])
 			},
 		},
@@ -326,6 +352,61 @@ func TestAuditEnvelopeEvidenceMatrix(t *testing.T) {
 	payload, err := json.Marshal(rows)
 	require.NoError(t, err)
 	t.Logf("AGENTKEYS_EVIDENCE_JSON=%s", payload)
+}
+
+func TestDecodeTypedAuditRowsAndRootLeaves(t *testing.T) {
+	operator := "0x" + strings.Repeat("24", 32)
+	actor := "0x" + strings.Repeat("42", 32)
+	signBody := map[string]interface{}{
+		"chain_id":           uint64(212013),
+		"verifying_contract": "0x1111111111111111111111111111111111111111",
+		"primary_type":       "Permit",
+		"type_hash":          "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"domain_separator":   "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		"digest":             "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+	}
+	deviceBody := map[string]interface{}{
+		"device_key_hash":  "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"role_bits":        uint64(7),
+		"attestation_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+	}
+	signBytes, signHash := canonicalFixtureEnvelope(t, 21, operator, actor, signBody)
+	deviceBytes, deviceHash := canonicalFixtureEnvelope(t, 50, operator, actor, deviceBody)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch strings.TrimPrefix(r.URL.Path, "/v1/audit/envelope/") {
+		case strings.TrimPrefix(signHash, "0x"):
+			_, _ = w.Write(signBytes)
+		case strings.TrimPrefix(deviceHash, "0x"):
+			_, _ = w.Write(deviceBytes)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+
+	logs := []EVMLogRecord{
+		auditAppendedLog(operator, actor, 21, signHash, 12, 1),
+		auditAppendedLog(operator, actor, 50, deviceHash, 12, 2),
+	}
+	rows, err := DecodeTypedAuditRows(context.Background(), logs, srv.URL, NewEnvelopeCache())
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	assert.Equal(t, "SignEip712", rows[0].OpKindName)
+	assert.Equal(t, uint64(12), rows[0].Block)
+	assert.Equal(t, uint64(1), rows[0].LogIndex)
+	assert.Equal(t, "12:1", rows[0].StreamPosition)
+	assert.Equal(t, "DeviceAdd", rows[1].OpKindName)
+
+	rootHash := "0x" + strings.Repeat("ab", 32)
+	rootRows, err := DecodeAuditRootRows(context.Background(), auditRootLog(operator, rootHash, []uint8{21, 50}, 2, 12, 3), logs, srv.URL, NewEnvelopeCache())
+	require.NoError(t, err)
+	assert.Equal(t, rootHash, rootRows.MerkleRoot)
+	assert.Equal(t, uint64(2), rootRows.EntryCount)
+	assert.Equal(t, []string{signHash, deviceHash}, rootRows.Leaves)
+	require.Len(t, rootRows.Rows, 2)
+	assert.Equal(t, "SignEip712", rootRows.Rows[0].OpKindName)
+	assert.Equal(t, "DeviceAdd", rootRows.Rows[1].OpKindName)
 }
 
 func TestDecodeEnvelopeRejectsVersionAndNonCanonicalMap(t *testing.T) {
@@ -444,6 +525,62 @@ func TestEnvelopeCacheFetchesByImmutableHashOnce(t *testing.T) {
 		assert.Equal(t, "ScopeGrant", decoded.OpKindName)
 	}
 	assert.Equal(t, 1, requests)
+}
+
+func canonicalFixtureEnvelope(t *testing.T, opKind uint8, operator, actor string, body map[string]interface{}) ([]byte, string) {
+	t.Helper()
+	cborBytes, err := EncodeCanonicalEnvelope(map[string]interface{}{
+		"version":           uint8(1),
+		"ts_unix":           uint64(1710000200),
+		"actor_omni":        mustHexBytes(t, actor),
+		"operator_omni":     mustHexBytes(t, operator),
+		"op_kind":           opKind,
+		"op_body":           body,
+		"result":            uint8(0),
+		"intent_text":       nil,
+		"intent_commitment": nil,
+	})
+	require.NoError(t, err)
+	return cborBytes, crypto.Keccak256Hash(cborBytes).Hex()
+}
+
+func auditAppendedLog(operator, actor string, opKind uint8, envelopeHash string, block uint64, logIndex uint64) EVMLogRecord {
+	return EVMLogRecord{
+		Address:          "0x1111111111111111111111111111111111111111",
+		Topics:           []string{AuditAppendedV2Topic, operator, actor, PaddedOpKindTopic(opKind)},
+		Data:             envelopeHash,
+		BlockNumber:      fmt.Sprintf("0x%x", block),
+		BlockHash:        "0x" + strings.Repeat("11", 32),
+		Timestamp:        "0x65f00000",
+		LogIndex:         fmt.Sprintf("0x%x", logIndex),
+		TransactionHash:  "0x" + strings.Repeat("22", 32),
+		TransactionIndex: "0x0",
+	}
+}
+
+func auditRootLog(operator, merkleRoot string, opKinds []uint8, entryCount uint64, block uint64, logIndex uint64) EVMLogRecord {
+	bitmap := make([]byte, 32)
+	for _, opKind := range opKinds {
+		bitmap[31-int(opKind)/8] |= byte(1 << uint(opKind%8))
+	}
+	return EVMLogRecord{
+		Address:          "0x1111111111111111111111111111111111111111",
+		Topics:           []string{AuditRootAppendedV2Topic, operator, merkleRoot},
+		Data:             "0x" + hexOf(bitmap) + fmt.Sprintf("%064x", entryCount),
+		BlockNumber:      fmt.Sprintf("0x%x", block),
+		BlockHash:        "0x" + strings.Repeat("33", 32),
+		Timestamp:        "0x65f00000",
+		LogIndex:         fmt.Sprintf("0x%x", logIndex),
+		TransactionHash:  "0x" + strings.Repeat("44", 32),
+		TransactionIndex: "0x0",
+	}
+}
+
+func mustHexBytes(t *testing.T, value string) []byte {
+	t.Helper()
+	b, err := hex.DecodeString(strings.TrimPrefix(value, "0x"))
+	require.NoError(t, err)
+	return b
 }
 
 func bytesOf(b byte) []byte {

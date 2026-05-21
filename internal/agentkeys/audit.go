@@ -9,6 +9,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -67,6 +68,48 @@ type AuditRootAppendedV2Event struct {
 	EntryCount       uint64 `json:"entry_count"`
 }
 
+type EVMLogRecord struct {
+	Address          string   `json:"address"`
+	Topics           []string `json:"topics"`
+	Data             string   `json:"data"`
+	BlockNumber      string   `json:"blockNumber"`
+	BlockHash        string   `json:"blockHash"`
+	Timestamp        string   `json:"timestamp"`
+	LogIndex         string   `json:"logIndex"`
+	TransactionHash  string   `json:"transactionHash"`
+	TransactionIndex string   `json:"transactionIndex"`
+}
+
+type TypedAuditRow struct {
+	Envelope
+	ContractAddress  string `json:"contract_address"`
+	Block            uint64 `json:"block"`
+	BlockHash        string `json:"block_hash"`
+	Timestamp        uint64 `json:"timestamp"`
+	Tx               string `json:"tx"`
+	TransactionIndex uint64 `json:"transaction_index"`
+	LogIndex         uint64 `json:"log_index"`
+	StreamPosition   string `json:"stream_position"`
+}
+
+type AuditRowsPage struct {
+	Events     []TypedAuditRow `json:"events"`
+	NextCursor *string         `json:"next_cursor"`
+}
+
+type AuditRootRows struct {
+	MerkleRoot       string          `json:"merkle_root"`
+	OperatorOmni     string          `json:"operator_omni"`
+	OpKindBitmapU256 string          `json:"op_kind_bitmap_u256"`
+	EntryCount       uint64          `json:"entry_count"`
+	Block            uint64          `json:"block"`
+	BlockHash        string          `json:"block_hash"`
+	Tx               string          `json:"tx"`
+	LogIndex         uint64          `json:"log_index"`
+	Leaves           []string        `json:"leaves"`
+	Rows             []TypedAuditRow `json:"rows"`
+}
+
 type EnvelopeCache struct {
 	mu     sync.RWMutex
 	bodies map[string][]byte
@@ -100,7 +143,7 @@ var opKindSpecs = map[uint8]opKindSpec{
 	20: {"SignEip191", "signs", fields(text("message_digest"), text("wallet"))},
 	21: {"SignEip712", "signs", fields(uintf("chain_id"), text("verifying_contract"), text("primary_type"), text("type_hash"), text("domain_separator"), text("digest"))},
 	30: {"PaymentEscrowRedeem", "payments", fields(text("escrow_addr"), text("amount"), text("recipient"), uintf("chain_id"))},
-	31: {"PaymentDirect", "payments", fields(text("rail"), text("ref"), uintf("amount_minor"), text("currency"))},
+	31: {"PaymentDirect", "payments", fields(text("rail"), text("ref"), text("amount_minor"), text("currency"))},
 	40: {"ScopeGrant", "scope", fields(text("agent_omni"), text("service"), uintf("max_calls"), text("max_amount"))},
 	41: {"ScopeRevoke", "scope", fields(text("agent_omni"), text("service"))},
 	50: {"DeviceAdd", "device", fields(text("device_key_hash"), uintf("role_bits"), text("attestation_hash"))},
@@ -294,6 +337,136 @@ func (c *EnvelopeCache) FetchAndDecode(ctx context.Context, workerBaseURL string
 	return append([]byte(nil), body...), envelope, nil
 }
 
+func DecodeTypedAuditRow(ctx context.Context, log EVMLogRecord, workerBaseURL string, cache *EnvelopeCache) (*TypedAuditRow, error) {
+	event, err := DecodeAuditAppendedV2Log(log.Topics, log.Data)
+	if err != nil {
+		return nil, err
+	}
+	if cache == nil {
+		cache = NewEnvelopeCache()
+	}
+	_, envelope, err := cache.FetchAndDecode(ctx, workerBaseURL, event.EnvelopeHash)
+	if err != nil {
+		return nil, err
+	}
+	if !strings.EqualFold(event.OperatorOmni, envelope.OperatorOmni) {
+		return nil, fmt.Errorf("operator_omni mismatch for envelope %s", event.EnvelopeHash)
+	}
+	if !strings.EqualFold(event.ActorOmni, envelope.ActorOmni) {
+		return nil, fmt.Errorf("actor_omni mismatch for envelope %s", event.EnvelopeHash)
+	}
+	if event.OpKind != envelope.OpKind {
+		return nil, fmt.Errorf("op_kind mismatch for envelope %s", event.EnvelopeHash)
+	}
+
+	block, err := parseUintAuto(log.BlockNumber)
+	if err != nil {
+		return nil, fmt.Errorf("blockNumber: %w", err)
+	}
+	timestamp, err := parseUintAuto(log.Timestamp)
+	if err != nil {
+		return nil, fmt.Errorf("timestamp: %w", err)
+	}
+	logIndex, err := parseUintAuto(log.LogIndex)
+	if err != nil {
+		return nil, fmt.Errorf("logIndex: %w", err)
+	}
+	txIndex, err := parseUintAuto(log.TransactionIndex)
+	if err != nil {
+		return nil, fmt.Errorf("transactionIndex: %w", err)
+	}
+
+	return &TypedAuditRow{
+		Envelope:         *envelope,
+		ContractAddress:  normalizeHexHash(log.Address),
+		Block:            block,
+		BlockHash:        normalizeHexHash(log.BlockHash),
+		Timestamp:        timestamp,
+		Tx:               normalizeHexHash(log.TransactionHash),
+		TransactionIndex: txIndex,
+		LogIndex:         logIndex,
+		StreamPosition:   fmt.Sprintf("%d:%d", block, logIndex),
+	}, nil
+}
+
+func DecodeTypedAuditRows(ctx context.Context, logs []EVMLogRecord, workerBaseURL string, cache *EnvelopeCache) ([]TypedAuditRow, error) {
+	rows := make([]TypedAuditRow, 0, len(logs))
+	for _, log := range logs {
+		row, err := DecodeTypedAuditRow(ctx, log, workerBaseURL, cache)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, *row)
+	}
+	return rows, nil
+}
+
+func DecodeAuditRootRows(ctx context.Context, rootLog EVMLogRecord, leafLogs []EVMLogRecord, workerBaseURL string, cache *EnvelopeCache) (*AuditRootRows, error) {
+	event, err := DecodeAuditRootAppendedV2Log(rootLog.Topics, rootLog.Data)
+	if err != nil {
+		return nil, err
+	}
+	block, err := parseUintAuto(rootLog.BlockNumber)
+	if err != nil {
+		return nil, fmt.Errorf("root blockNumber: %w", err)
+	}
+	logIndex, err := parseUintAuto(rootLog.LogIndex)
+	if err != nil {
+		return nil, fmt.Errorf("root logIndex: %w", err)
+	}
+
+	rows, err := DecodeTypedAuditRows(ctx, leafLogs, workerBaseURL, cache)
+	if err != nil {
+		return nil, err
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].Block == rows[j].Block {
+			return rows[i].LogIndex < rows[j].LogIndex
+		}
+		return rows[i].Block < rows[j].Block
+	})
+	leaves := make([]string, 0, len(rows))
+	for _, row := range rows {
+		leaves = append(leaves, row.EnvelopeHash)
+	}
+
+	return &AuditRootRows{
+		MerkleRoot:       event.MerkleRoot,
+		OperatorOmni:     event.OperatorOmni,
+		OpKindBitmapU256: event.OpKindBitmapU256,
+		EntryCount:       event.EntryCount,
+		Block:            block,
+		BlockHash:        normalizeHexHash(rootLog.BlockHash),
+		Tx:               normalizeHexHash(rootLog.TransactionHash),
+		LogIndex:         logIndex,
+		Leaves:           leaves,
+		Rows:             rows,
+	}, nil
+}
+
+func PaddedOpKindTopic(opKind uint8) string {
+	return "0x" + strings.Repeat("0", 62) + fmt.Sprintf("%02x", opKind)
+}
+
+func OpKindTopicsFromBitmap(bitmap string) ([]string, error) {
+	bytes, err := hex.DecodeString(strings.TrimPrefix(strings.ToLower(bitmap), "0x"))
+	if err != nil {
+		return nil, err
+	}
+	if len(bytes) != 32 {
+		return nil, fmt.Errorf("op_kind_bitmap must be 32 bytes")
+	}
+	topics := make([]string, 0)
+	for opKind := 0; opKind < 256; opKind++ {
+		byteIndex := 31 - opKind/8
+		mask := byte(1 << uint(opKind%8))
+		if bytes[byteIndex]&mask != 0 {
+			topics = append(topics, PaddedOpKindTopic(uint8(opKind)))
+		}
+	}
+	return topics, nil
+}
+
 func EncodeCanonicalEnvelope(envelope map[string]interface{}) ([]byte, error) {
 	return encodeCanonical(envelope)
 }
@@ -462,6 +635,17 @@ func normalizeHexHash(hash string) string {
 		return ""
 	}
 	return "0x" + strings.TrimPrefix(hash, "0x")
+}
+
+func parseUintAuto(value string) (uint64, error) {
+	value = strings.TrimSpace(strings.ToLower(value))
+	if value == "" {
+		return 0, nil
+	}
+	if strings.HasPrefix(value, "0x") {
+		return strconv.ParseUint(strings.TrimPrefix(value, "0x"), 16, 64)
+	}
+	return strconv.ParseUint(value, 10, 64)
 }
 
 func abiBytes32(data string, wordOffset int) (string, error) {

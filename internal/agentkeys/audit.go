@@ -100,7 +100,7 @@ var opKindSpecs = map[uint8]opKindSpec{
 	20: {"SignEip191", "signs", fields(text("message_digest"), text("wallet"))},
 	21: {"SignEip712", "signs", fields(uintf("chain_id"), text("verifying_contract"), text("primary_type"), text("type_hash"), text("domain_separator"), text("digest"))},
 	30: {"PaymentEscrowRedeem", "payments", fields(text("escrow_addr"), text("amount"), text("recipient"), uintf("chain_id"))},
-	31: {"PaymentDirect", "payments", fields(text("rail"), text("ref"), text("amount_minor"), text("currency"))},
+	31: {"PaymentDirect", "payments", fields(text("rail"), text("ref"), uintf("amount_minor"), text("currency"))},
 	40: {"ScopeGrant", "scope", fields(text("agent_omni"), text("service"), uintf("max_calls"), text("max_amount"))},
 	41: {"ScopeRevoke", "scope", fields(text("agent_omni"), text("service"))},
 	50: {"DeviceAdd", "device", fields(text("device_key_hash"), uintf("role_bits"), text("attestation_hash"))},

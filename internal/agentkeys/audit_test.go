@@ -100,6 +100,21 @@ func TestCriticalOpKindRenderers(t *testing.T) {
 				assert.Equal(t, "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", rendered["device_key_hash"])
 			},
 		},
+		{
+			name:   "PaymentDirect",
+			opKind: 31,
+			opName: "PaymentDirect",
+			body: map[string]interface{}{
+				"rail":         "stripe",
+				"ref":          "invoice-123",
+				"amount_minor": uint64(12345),
+				"currency":     "USD",
+			},
+			assertion: func(t *testing.T, rendered map[string]interface{}) {
+				assert.Equal(t, uint64(12345), rendered["amount_minor"])
+				assert.Equal(t, "USD", rendered["currency"])
+			},
+		},
 	}
 
 	for _, tt := range tests {

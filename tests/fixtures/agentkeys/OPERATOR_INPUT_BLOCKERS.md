@@ -1,20 +1,28 @@
 # AgentKeys Operator Input Blockers
 
-This PR implements decoder, typed-row, and root-row plumbing, but issue #14
-requires a real Heima Mainnet delivery loop. Issue #12 was scanned for the
-`CredentialAudit` V2 deployment inputs and only states that the exact address
-will be supplied by the operator alongside the closing PR tx capture. The exact
-contract address and deploy block are not present in issue #12, PR #13, or this
-repository snapshot.
+This PR implements decoder, typed-row, and root-row plumbing, but issue #12
+requires a real Heima Mainnet delivery loop. Issue #12 itself says the exact
+V2 address is supplied with the closing PR capture, while issues #3 and #4
+already list the current AgentKeys stage-1 `CredentialAudit` address:
+`0x1801ded1a4FBD8c9224Ab18B9EcbB293B8674c06`.
+
+That address has non-empty bytecode on Heima Mainnet via `eth_getCode`, so the
+remaining blocker is not the address. The remaining blockers are the log lower
+bound/deploy block for the V2 audit events and the real canonical event/worker
+capture artifacts.
 
 Do not replace the missing inputs with mock logs or hand-crafted fixture rows.
 
 ## Required Heima Mainnet Contract Inputs
 
-Blocked on all of the following operator-supplied values:
+Known contract input:
 
 - Heima Mainnet chain ID: `212013`
-- `CredentialAudit` V2 contract address
+- `CredentialAudit`: `0x1801ded1a4FBD8c9224Ab18B9EcbB293B8674c06`
+- Source: litentry/subscan-essentials issues #3 and #4
+
+Blocked on the following operator-supplied values:
+
 - V2 deploy block, or the earliest block height that can be used as the
   `eth_getLogs` lower bound
 - Worker base URL if it differs from `https://audit.litentry.org`

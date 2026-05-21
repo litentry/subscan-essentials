@@ -58,7 +58,23 @@ type EtherscanLogsRes struct {
 func (a *ApiSrv) API_GetLogs(ctx context.Context, opts ...model.Option) (res []EtherscanLogsRes) {
 	var list []TransactionReceipt
 	sg.db.WithContext(ctx).Scopes(opts...).Order("id desc").Find(&list)
+	return transactionReceiptsToEtherscanLogs(ctx, list)
+}
 
+func (a *ApiSrv) API_GetLogsForAgentKeys(ctx context.Context, order string, limit int, opts ...model.Option) (res []EtherscanLogsRes) {
+	var list []TransactionReceipt
+	query := sg.db.WithContext(ctx).Scopes(opts...)
+	if order != "" {
+		query = query.Order(order)
+	}
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+	query.Find(&list)
+	return transactionReceiptsToEtherscanLogs(ctx, list)
+}
+
+func transactionReceiptsToEtherscanLogs(ctx context.Context, list []TransactionReceipt) (res []EtherscanLogsRes) {
 	var (
 		blockNums []uint64
 		hashes    []string

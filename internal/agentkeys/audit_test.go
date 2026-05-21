@@ -3,6 +3,7 @@ package agentkeys
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -172,6 +173,159 @@ func TestUnknownOpKindNonBreakFallback(t *testing.T) {
 		assert.Equal(t, opKind, fallback.OpKindByte)
 		assert.Equal(t, base64.StdEncoding.EncodeToString(opBodyBytes), fallback.OpBodyB64)
 	}
+}
+
+func TestAuditEnvelopeEvidenceMatrix(t *testing.T) {
+	type evidenceRow struct {
+		Case                  string      `json:"case"`
+		OpKind                uint8       `json:"op_kind"`
+		OpKindName            string      `json:"op_kind_name"`
+		ResultName            string      `json:"result_name"`
+		HashVerified          bool        `json:"hash_verified"`
+		EnvelopeHash          string      `json:"envelope_hash"`
+		Body                  interface{} `json:"body"`
+		OpaqueOpBodyCBORBytes bool        `json:"opaque_op_body_cbor_bytes"`
+	}
+
+	tests := []struct {
+		name       string
+		opKind     uint8
+		opName     string
+		body       map[string]interface{}
+		assertBody func(t *testing.T, body interface{})
+	}{
+		{
+			name:   "SignEip712",
+			opKind: 21,
+			opName: "SignEip712",
+			body: map[string]interface{}{
+				"chain_id":           uint64(212013),
+				"verifying_contract": "0x1111111111111111111111111111111111111111",
+				"primary_type":       "Permit",
+				"type_hash":          "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				"domain_separator":   "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+				"digest":             "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+			},
+			assertBody: func(t *testing.T, body interface{}) {
+				rendered, ok := body.(map[string]interface{})
+				require.True(t, ok)
+				assert.Equal(t, uint64(212013), rendered["chain_id"])
+				assert.Equal(t, "Permit", rendered["primary_type"])
+				assert.Equal(t, "0xcccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc", rendered["digest"])
+			},
+		},
+		{
+			name:   "ScopeGrant",
+			opKind: 40,
+			opName: "ScopeGrant",
+			body: map[string]interface{}{
+				"agent_omni": "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				"service":    "credential-vault",
+				"max_calls":  uint64(5),
+				"max_amount": "1000000000000000000",
+			},
+			assertBody: func(t *testing.T, body interface{}) {
+				rendered, ok := body.(map[string]interface{})
+				require.True(t, ok)
+				assert.Equal(t, "credential-vault", rendered["service"])
+				assert.Equal(t, uint64(5), rendered["max_calls"])
+				assert.Equal(t, "1000000000000000000", rendered["max_amount"])
+			},
+		},
+		{
+			name:   "DeviceAdd",
+			opKind: 50,
+			opName: "DeviceAdd",
+			body: map[string]interface{}{
+				"device_key_hash":  "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+				"role_bits":        uint64(7),
+				"attestation_hash": "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			},
+			assertBody: func(t *testing.T, body interface{}) {
+				rendered, ok := body.(map[string]interface{})
+				require.True(t, ok)
+				assert.Equal(t, "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", rendered["device_key_hash"])
+				assert.Equal(t, uint64(7), rendered["role_bits"])
+				assert.Equal(t, "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", rendered["attestation_hash"])
+			},
+		},
+		{
+			name:   "PaymentDirect",
+			opKind: 31,
+			opName: "PaymentDirect",
+			body: map[string]interface{}{
+				"rail":         "stripe",
+				"ref":          "invoice-123",
+				"amount_minor": uint64(12345),
+				"currency":     "USD",
+			},
+			assertBody: func(t *testing.T, body interface{}) {
+				rendered, ok := body.(map[string]interface{})
+				require.True(t, ok)
+				assert.Equal(t, "stripe", rendered["rail"])
+				assert.Equal(t, "invoice-123", rendered["ref"])
+				assert.Equal(t, uint64(12345), rendered["amount_minor"])
+				assert.Equal(t, "USD", rendered["currency"])
+			},
+		},
+		{
+			name:   "UnknownFuture",
+			opKind: 250,
+			opName: "Unknown(250)",
+			body: map[string]interface{}{
+				"future_field": "opaque",
+				"future_nonce": uint64(9),
+			},
+			assertBody: func(t *testing.T, body interface{}) {
+				fallback, ok := body.(UnknownOpBody)
+				require.True(t, ok)
+				assert.Equal(t, uint8(250), fallback.OpKindByte)
+				assert.NotEmpty(t, fallback.OpBodyB64)
+			},
+		},
+	}
+
+	rows := make([]evidenceRow, 0, len(tests))
+	for i, tt := range tests {
+		envelopeBytes, err := EncodeCanonicalEnvelope(map[string]interface{}{
+			"version":           uint8(1),
+			"ts_unix":           uint64(1710000100 + i),
+			"actor_omni":        bytesOf(0x42),
+			"operator_omni":     bytesOf(0x24),
+			"op_kind":           tt.opKind,
+			"op_body":           tt.body,
+			"result":            uint8(0),
+			"intent_text":       "fixture-backed evidence matrix",
+			"intent_commitment": bytesOf(0x77),
+		})
+		require.NoError(t, err)
+
+		hash := crypto.Keccak256Hash(envelopeBytes).Hex()
+		decoded, err := DecodeEnvelope(envelopeBytes, hash)
+		require.NoError(t, err)
+		require.True(t, decoded.HashVerified)
+		require.NotEmpty(t, decoded.OpaqueOpBodyCBOR)
+		require.Equal(t, tt.opKind, decoded.OpKind)
+		require.Equal(t, tt.opName, decoded.OpKindName)
+		require.Equal(t, "Success", decoded.ResultName)
+		require.Equal(t, hash, decoded.EnvelopeHash)
+		tt.assertBody(t, decoded.Body)
+
+		rows = append(rows, evidenceRow{
+			Case:                  tt.name,
+			OpKind:                decoded.OpKind,
+			OpKindName:            decoded.OpKindName,
+			ResultName:            decoded.ResultName,
+			HashVerified:          decoded.HashVerified,
+			EnvelopeHash:          decoded.EnvelopeHash,
+			Body:                  decoded.Body,
+			OpaqueOpBodyCBORBytes: decoded.OpaqueOpBodyCBOR != "",
+		})
+	}
+
+	payload, err := json.Marshal(rows)
+	require.NoError(t, err)
+	t.Logf("AGENTKEYS_EVIDENCE_JSON=%s", payload)
 }
 
 func TestDecodeEnvelopeRejectsVersionAndNonCanonicalMap(t *testing.T) {

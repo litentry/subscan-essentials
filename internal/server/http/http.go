@@ -46,6 +46,7 @@ func initRouter(e *gin.Engine) {
 	e.GET("ping", ping)
 	e.GET("healthz", livenessProbe)
 	e.GET("readiness", readinessProbe)
+	e.GET("agentkeys/audit/envelope/:hash", agentkeysAuditEnvelopeHandle)
 	customValidator.RegisterCustomValidator()
 	// internal
 	g := e.Group("/api")

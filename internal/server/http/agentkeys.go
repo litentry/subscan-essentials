@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -24,6 +25,11 @@ var agentkeysEvmAPI = &evmdao.ApiSrv{}
 type agentkeysAuditCursor struct {
 	Block    uint64 `json:"block"`
 	LogIndex uint64 `json:"log_index"`
+}
+
+type agentkeysAuditLogQuery struct {
+	opts   []model.Option
+	opKind *uint8
 }
 
 func agentkeysAuditEnvelopeHandle(c *gin.Context) {
@@ -52,7 +58,7 @@ func agentkeysAuditRowsHandle(c *gin.Context) {
 		return
 	}
 
-	opts, err := agentkeysAuditLogFilters(c, c.Param("operator_omni"))
+	query, err := agentkeysAuditLogFilters(c, c.Param("operator_omni"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -64,9 +70,9 @@ func agentkeysAuditRowsHandle(c *gin.Context) {
 			return
 		}
 		if sortDir == "asc" {
-			opts = append(opts, model.Where("(block_num > ? OR (block_num = ? AND `index` > ?))", cursor.Block, cursor.Block, cursor.LogIndex))
+			query.opts = append(query.opts, model.Where("(block_num > ? OR (block_num = ? AND `index` > ?))", cursor.Block, cursor.Block, cursor.LogIndex))
 		} else {
-			opts = append(opts, model.Where("(block_num < ? OR (block_num = ? AND `index` < ?))", cursor.Block, cursor.Block, cursor.LogIndex))
+			query.opts = append(query.opts, model.Where("(block_num < ? OR (block_num = ? AND `index` < ?))", cursor.Block, cursor.Block, cursor.LogIndex))
 		}
 	}
 
@@ -74,15 +80,36 @@ func agentkeysAuditRowsHandle(c *gin.Context) {
 	if sortDir == "asc" {
 		order = "block_num asc, `index` asc"
 	}
-	logs := agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), order, limit+1, opts...)
-	hasNext := len(logs) > limit
-	if hasNext {
-		logs = logs[:limit]
-	}
-	rows, err := agentkeys.DecodeTypedAuditRows(c.Request.Context(), toAgentKeysLogs(logs), agentkeysAuditWorkerURL(), agentkeysEnvelopeCache)
+	logs := agentkeysAuditLogs(c, order, limit+1, query)
+	rows, err := agentkeys.DecodeTypedAuditRowsBestEffort(c.Request.Context(), toAgentKeysLogs(logs), agentkeysAuditWorkerURL(), agentkeysEnvelopeCache)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
+	}
+	if query.opKind != nil {
+		filtered := rows[:0]
+		for _, row := range rows {
+			if row.OpKind == *query.opKind {
+				filtered = append(filtered, row)
+			}
+		}
+		rows = filtered
+	}
+	sort.SliceStable(rows, func(i, j int) bool {
+		if rows[i].Block == rows[j].Block {
+			if sortDir == "asc" {
+				return rows[i].LogIndex < rows[j].LogIndex
+			}
+			return rows[i].LogIndex > rows[j].LogIndex
+		}
+		if sortDir == "asc" {
+			return rows[i].Block < rows[j].Block
+		}
+		return rows[i].Block > rows[j].Block
+	})
+	hasNext := len(rows) > limit
+	if hasNext {
+		rows = rows[:limit]
 	}
 	var nextCursor *string
 	if hasNext && len(rows) > 0 {
@@ -180,18 +207,19 @@ func agentkeysAuditLimit(raw string) (int, error) {
 	return limit, nil
 }
 
-func agentkeysAuditLogFilters(c *gin.Context, operator string) ([]model.Option, error) {
+func agentkeysAuditLogFilters(c *gin.Context, operator string) (agentkeysAuditLogQuery, error) {
 	opts := []model.Option{
 		model.Where("address = ?", agentkeysAuditContractAddress()),
-		model.Where("method_hash = ?", agentkeys.AuditAppendedV2Topic),
 		model.Where("topic1 = ?", normalizeAgentKeysBytes32(operator)),
 	}
+	var opKind *uint8
 	if opKindRaw := c.Query("op_kind"); opKindRaw != "" {
-		opKind, err := strconv.ParseUint(opKindRaw, 10, 8)
+		n, err := strconv.ParseUint(opKindRaw, 10, 8)
 		if err != nil {
-			return nil, fmt.Errorf("op_kind must fit uint8")
+			return agentkeysAuditLogQuery{}, fmt.Errorf("op_kind must fit uint8")
 		}
-		opts = append(opts, model.Where("topic3 = ?", agentkeys.PaddedOpKindTopic(uint8(opKind))))
+		value := uint8(n)
+		opKind = &value
 	}
 	if actor := c.Query("actor_omni"); actor != "" {
 		opts = append(opts, model.Where("topic2 = ?", normalizeAgentKeysBytes32(actor)))
@@ -199,18 +227,39 @@ func agentkeysAuditLogFilters(c *gin.Context, operator string) ([]model.Option, 
 	if from := c.Query("from_block"); from != "" {
 		n, err := strconv.ParseUint(from, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("from_block must be uint")
+			return agentkeysAuditLogQuery{}, fmt.Errorf("from_block must be uint")
 		}
 		opts = append(opts, model.Where("block_num >= ?", n))
 	}
 	if to := c.Query("to_block"); to != "" {
 		n, err := strconv.ParseUint(to, 10, 64)
 		if err != nil {
-			return nil, fmt.Errorf("to_block must be uint")
+			return agentkeysAuditLogQuery{}, fmt.Errorf("to_block must be uint")
 		}
 		opts = append(opts, model.Where("block_num <= ?", n))
 	}
-	return opts, nil
+	return agentkeysAuditLogQuery{opts: opts, opKind: opKind}, nil
+}
+
+func agentkeysAuditLogs(c *gin.Context, order string, limit int, query agentkeysAuditLogQuery) []evmdao.EtherscanLogsRes {
+	v2Opts := appendAgentKeysAuditOpts(query.opts, model.Where("method_hash = ?", agentkeys.AuditAppendedV2Topic))
+	if query.opKind != nil {
+		v2Opts = append(v2Opts, model.Where("topic3 = ?", agentkeys.PaddedOpKindTopic(*query.opKind)))
+	}
+	currentOpts := appendAgentKeysAuditOpts(query.opts, model.Where("method_hash = ?", agentkeys.AuditAppendedCurrentTopic))
+	if query.opKind != nil {
+		currentOpts = append(currentOpts, model.Where("data like ?", "0x"+fmt.Sprintf("%064x", *query.opKind)+"%"))
+	}
+	logs := agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), order, limit, v2Opts...)
+	logs = append(logs, agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), order, limit, currentOpts...)...)
+	return logs
+}
+
+func appendAgentKeysAuditOpts(base []model.Option, extra ...model.Option) []model.Option {
+	out := make([]model.Option, 0, len(base)+len(extra))
+	out = append(out, base...)
+	out = append(out, extra...)
+	return out
 }
 
 func toAgentKeysLogs(logs []evmdao.EtherscanLogsRes) []agentkeys.EVMLogRecord {

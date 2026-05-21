@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 
@@ -400,6 +401,15 @@ func TestDecodeTypedAuditRowsAndRootLeaves(t *testing.T) {
 	assert.Equal(t, "12:1", rows[0].StreamPosition)
 	assert.Equal(t, "DeviceAdd", rows[1].OpKindName)
 
+	currentLog := auditAppendedCurrentLog(operator, actor, 21, signHash, 7, 13, 0)
+	currentRows, err := DecodeTypedAuditRows(context.Background(), []EVMLogRecord{currentLog}, srv.URL, NewEnvelopeCache())
+	require.NoError(t, err)
+	require.Len(t, currentRows, 1)
+	assert.Equal(t, "AuditAppended", currentRows[0].EventName)
+	assert.Equal(t, "7", currentRows[0].CurrentSequence)
+	assert.Equal(t, "SignEip712", currentRows[0].OpKindName)
+	assert.True(t, currentRows[0].EnvelopeAvailable)
+
 	rootHash := "0x" + strings.Repeat("ab", 32)
 	rootRows, err := DecodeAuditRootRows(context.Background(), auditRootLog(operator, rootHash, []uint8{21, 50}, 2, 12, 3), logs, srv.URL, NewEnvelopeCache())
 	require.NoError(t, err)
@@ -411,6 +421,65 @@ func TestDecodeTypedAuditRowsAndRootLeaves(t *testing.T) {
 	require.Len(t, rootRows.Rows, 2)
 	assert.Equal(t, "SignEip712", rootRows.Rows[0].OpKindName)
 	assert.Equal(t, "DeviceAdd", rootRows.Rows[1].OpKindName)
+}
+
+func TestDecodeTypedAuditRowsBestEffortKeepsLiveChainRowsWhenWorkerMissing(t *testing.T) {
+	operator := "0x" + strings.Repeat("94", 32)
+	actor := "0x" + strings.Repeat("82", 32)
+	envelopeHash := "0x" + strings.Repeat("6a", 32)
+	log := auditAppendedCurrentLog(operator, actor, 0, envelopeHash, 0, 9631477, 0)
+
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+
+	rows, err := DecodeTypedAuditRowsBestEffort(context.Background(), []EVMLogRecord{log}, srv.URL, NewEnvelopeCache())
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "AuditAppended", rows[0].EventName)
+	assert.Equal(t, uint8(0), rows[0].OpKind)
+	assert.Equal(t, "CredStore", rows[0].OpKindName)
+	assert.Equal(t, envelopeHash, rows[0].EnvelopeHash)
+	assert.False(t, rows[0].EnvelopeAvailable)
+	require.NotNil(t, rows[0].EnvelopeFetchError)
+	assert.Contains(t, *rows[0].EnvelopeFetchError, "agentkeys audit envelope not found")
+}
+
+func TestDecodeLiveHeimaCurrentAuditFixture(t *testing.T) {
+	body, err := os.ReadFile("../../tests/fixtures/agentkeys/heima-mainnet-current-auditappended.jsonl")
+	require.NoError(t, err)
+	lines := strings.Split(strings.TrimSpace(string(body)), "\n")
+	require.NotEmpty(t, lines)
+
+	for _, line := range lines {
+		var row struct {
+			EventTopic                string   `json:"event_topic"`
+			ContractAddress           string   `json:"contract_address"`
+			OperatorOmni              string   `json:"operator_omni"`
+			ActorOmni                 string   `json:"actor_omni"`
+			CurrentIndexedKey         string   `json:"current_indexed_key"`
+			OpKind                    uint8    `json:"op_kind"`
+			CurrentSequence           string   `json:"current_sequence"`
+			EnvelopeHash              string   `json:"envelope_hash"`
+			RawTopics                 []string `json:"raw_topics"`
+			RawData                   string   `json:"raw_data"`
+			EnvelopeFetchedFromWorker bool     `json:"envelope_fetched_from_worker"`
+			EnvelopeWorkerStatus      int      `json:"envelope_worker_status"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(line), &row))
+		require.Equal(t, CredentialAuditContractAddress, row.ContractAddress)
+		require.Equal(t, AuditAppendedCurrentTopic, row.EventTopic)
+
+		decoded, err := DecodeAuditAppendedCurrentLog(row.RawTopics, row.RawData)
+		require.NoError(t, err)
+		assert.Equal(t, row.OperatorOmni, decoded.OperatorOmni)
+		assert.Equal(t, row.ActorOmni, decoded.ActorOmni)
+		assert.Equal(t, row.CurrentIndexedKey, decoded.CurrentIndexedKey)
+		assert.Equal(t, row.OpKind, decoded.OpKind)
+		assert.Equal(t, row.CurrentSequence, decoded.CurrentSequence)
+		assert.Equal(t, row.EnvelopeHash, decoded.EnvelopeHash)
+		assert.False(t, row.EnvelopeFetchedFromWorker)
+		assert.Equal(t, http.StatusNotFound, row.EnvelopeWorkerStatus)
+	}
 }
 
 func TestDecodeEnvelopeRejectsVersionAndNonCanonicalMap(t *testing.T) {
@@ -451,6 +520,7 @@ func TestKnownOpKindTableMatchesCanonicalIssueTable(t *testing.T) {
 func TestDecodeAuditEventLogs(t *testing.T) {
 	operator := "0x" + strings.Repeat("aa", 32)
 	actor := "0x" + strings.Repeat("bb", 32)
+	currentIndexedKey := "0x" + strings.Repeat("12", 32)
 	envelopeHash := "0x" + strings.Repeat("cc", 32)
 	opKindTopic := "0x" + strings.Repeat("0", 62) + "15"
 
@@ -460,6 +530,18 @@ func TestDecodeAuditEventLogs(t *testing.T) {
 	assert.Equal(t, actor, appended.ActorOmni)
 	assert.Equal(t, uint8(21), appended.OpKind)
 	assert.Equal(t, envelopeHash, appended.EnvelopeHash)
+	assert.Equal(t, "AuditAppendedV2", appended.EventName)
+
+	currentData := "0x" + fmt.Sprintf("%064x", 50) + fmt.Sprintf("%064x", 9) + strings.TrimPrefix(envelopeHash, "0x")
+	current, err := DecodeAuditAppendedCurrentLog([]string{AuditAppendedCurrentTopic, operator, actor, currentIndexedKey}, currentData)
+	require.NoError(t, err)
+	assert.Equal(t, operator, current.OperatorOmni)
+	assert.Equal(t, actor, current.ActorOmni)
+	assert.Equal(t, uint8(50), current.OpKind)
+	assert.Equal(t, envelopeHash, current.EnvelopeHash)
+	assert.Equal(t, currentIndexedKey, current.CurrentIndexedKey)
+	assert.Equal(t, "9", current.CurrentSequence)
+	assert.Equal(t, "AuditAppended", current.EventName)
 
 	rootData := "0x" + strings.Repeat("dd", 32) + strings.Repeat("0", 63) + "7"
 	root, err := DecodeAuditRootAppendedV2Log([]string{AuditRootAppendedV2Topic, operator, envelopeHash}, rootData)
@@ -558,6 +640,20 @@ func auditAppendedLog(operator, actor string, opKind uint8, envelopeHash string,
 		Timestamp:        "0x65f00000",
 		LogIndex:         fmt.Sprintf("0x%x", logIndex),
 		TransactionHash:  "0x" + strings.Repeat("22", 32),
+		TransactionIndex: "0x0",
+	}
+}
+
+func auditAppendedCurrentLog(operator, actor string, opKind uint8, envelopeHash string, sequence uint64, block uint64, logIndex uint64) EVMLogRecord {
+	return EVMLogRecord{
+		Address:          CredentialAuditContractAddress,
+		Topics:           []string{AuditAppendedCurrentTopic, operator, actor, "0x" + strings.Repeat("12", 32)},
+		Data:             "0x" + fmt.Sprintf("%064x", opKind) + fmt.Sprintf("%064x", sequence) + strings.TrimPrefix(envelopeHash, "0x"),
+		BlockNumber:      fmt.Sprintf("0x%x", block),
+		BlockHash:        "0x" + strings.Repeat("55", 32),
+		Timestamp:        "0x65f00000",
+		LogIndex:         fmt.Sprintf("0x%x", logIndex),
+		TransactionHash:  "0x" + strings.Repeat("66", 32),
 		TransactionIndex: "0x0",
 	}
 }

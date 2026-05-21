@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"net/url"
 	"sort"
@@ -22,16 +23,18 @@ const (
 	EnvelopeVersion = 1
 
 	HeimaChainID                   = 212013
-	CredentialAuditContractAddress = "0x1801ded1a4FBD8c9224Ab18B9EcbB293B8674c06"
+	CredentialAuditContractAddress = "0x63c4545ac01c77cc74044f25b8edea3880224577"
 
-	AuditAppendedV2Signature     = "AuditAppendedV2(bytes32,bytes32,uint8,bytes32)"
-	AuditRootAppendedV2Signature = "AuditRootAppendedV2(bytes32,bytes32,bytes32,uint64)"
+	AuditAppendedV2Signature      = "AuditAppendedV2(bytes32,bytes32,uint8,bytes32)"
+	AuditAppendedCurrentSignature = "AuditAppended(bytes32,bytes32,bytes32,uint8,uint256,bytes32)"
+	AuditRootAppendedV2Signature  = "AuditRootAppendedV2(bytes32,bytes32,bytes32,uint64)"
 )
 
 var (
-	AuditAppendedV2Topic     = crypto.Keccak256Hash([]byte(AuditAppendedV2Signature)).Hex()
-	AuditRootAppendedV2Topic = crypto.Keccak256Hash([]byte(AuditRootAppendedV2Signature)).Hex()
-	ErrEnvelopeNotFound      = errors.New("agentkeys audit envelope not found")
+	AuditAppendedV2Topic      = crypto.Keccak256Hash([]byte(AuditAppendedV2Signature)).Hex()
+	AuditAppendedCurrentTopic = crypto.Keccak256Hash([]byte(AuditAppendedCurrentSignature)).Hex()
+	AuditRootAppendedV2Topic  = crypto.Keccak256Hash([]byte(AuditRootAppendedV2Signature)).Hex()
+	ErrEnvelopeNotFound       = errors.New("agentkeys audit envelope not found")
 )
 
 type Envelope struct {
@@ -58,10 +61,14 @@ type UnknownOpBody struct {
 }
 
 type AuditAppendedV2Event struct {
-	OperatorOmni string `json:"operator_omni"`
-	ActorOmni    string `json:"actor_omni"`
-	OpKind       uint8  `json:"op_kind"`
-	EnvelopeHash string `json:"envelope_hash"`
+	EventName         string `json:"event_name"`
+	EventTopic        string `json:"event_topic"`
+	OperatorOmni      string `json:"operator_omni"`
+	ActorOmni         string `json:"actor_omni"`
+	OpKind            uint8  `json:"op_kind"`
+	EnvelopeHash      string `json:"envelope_hash"`
+	CurrentIndexedKey string `json:"current_indexed_key,omitempty"`
+	CurrentSequence   string `json:"current_sequence,omitempty"`
 }
 
 type AuditRootAppendedV2Event struct {
@@ -85,15 +92,21 @@ type EVMLogRecord struct {
 
 type TypedAuditRow struct {
 	Envelope
-	ChainID          uint64 `json:"chain_id"`
-	ContractAddress  string `json:"contract_address"`
-	Block            uint64 `json:"block"`
-	BlockHash        string `json:"block_hash"`
-	Timestamp        uint64 `json:"timestamp"`
-	Tx               string `json:"tx"`
-	TransactionIndex uint64 `json:"transaction_index"`
-	LogIndex         uint64 `json:"log_index"`
-	StreamPosition   string `json:"stream_position"`
+	ChainID            uint64  `json:"chain_id"`
+	ContractAddress    string  `json:"contract_address"`
+	EventName          string  `json:"event_name"`
+	EventTopic         string  `json:"event_topic"`
+	Block              uint64  `json:"block"`
+	BlockHash          string  `json:"block_hash"`
+	Timestamp          uint64  `json:"timestamp"`
+	Tx                 string  `json:"tx"`
+	TransactionIndex   uint64  `json:"transaction_index"`
+	LogIndex           uint64  `json:"log_index"`
+	StreamPosition     string  `json:"stream_position"`
+	CurrentIndexedKey  string  `json:"current_indexed_key,omitempty"`
+	CurrentSequence    string  `json:"current_sequence,omitempty"`
+	EnvelopeAvailable  bool    `json:"envelope_available"`
+	EnvelopeFetchError *string `json:"envelope_fetch_error,omitempty"`
 }
 
 type AuditRowsPage struct {
@@ -346,7 +359,19 @@ func (c *EnvelopeCache) FetchAndDecode(ctx context.Context, workerBaseURL string
 }
 
 func DecodeTypedAuditRow(ctx context.Context, log EVMLogRecord, workerBaseURL string, cache *EnvelopeCache) (*TypedAuditRow, error) {
-	event, err := DecodeAuditAppendedV2Log(log.Topics, log.Data)
+	return decodeTypedAuditRow(ctx, log, workerBaseURL, cache, false)
+}
+
+func DecodeTypedAuditRowBestEffort(ctx context.Context, log EVMLogRecord, workerBaseURL string, cache *EnvelopeCache) (*TypedAuditRow, error) {
+	return decodeTypedAuditRow(ctx, log, workerBaseURL, cache, true)
+}
+
+func decodeTypedAuditRow(ctx context.Context, log EVMLogRecord, workerBaseURL string, cache *EnvelopeCache, allowMissingEnvelope bool) (*TypedAuditRow, error) {
+	event, err := DecodeAuditAppendedLog(log.Topics, log.Data)
+	if err != nil {
+		return nil, err
+	}
+	row, err := auditRowSkeleton(log, event)
 	if err != nil {
 		return nil, err
 	}
@@ -355,6 +380,19 @@ func DecodeTypedAuditRow(ctx context.Context, log EVMLogRecord, workerBaseURL st
 	}
 	_, envelope, err := cache.FetchAndDecode(ctx, workerBaseURL, event.EnvelopeHash)
 	if err != nil {
+		if allowMissingEnvelope && errors.Is(err, ErrEnvelopeNotFound) {
+			errText := err.Error()
+			row.Envelope = Envelope{
+				Version:      EnvelopeVersion,
+				ActorOmni:    event.ActorOmni,
+				OperatorOmni: event.OperatorOmni,
+				OpKind:       event.OpKind,
+				OpKindName:   OpKindName(event.OpKind),
+				EnvelopeHash: event.EnvelopeHash,
+			}
+			row.EnvelopeFetchError = &errText
+			return row, nil
+		}
 		return nil, err
 	}
 	if !strings.EqualFold(event.OperatorOmni, envelope.OperatorOmni) {
@@ -367,6 +405,12 @@ func DecodeTypedAuditRow(ctx context.Context, log EVMLogRecord, workerBaseURL st
 		return nil, fmt.Errorf("op_kind mismatch for envelope %s", event.EnvelopeHash)
 	}
 
+	row.Envelope = *envelope
+	row.EnvelopeAvailable = true
+	return row, nil
+}
+
+func auditRowSkeleton(log EVMLogRecord, event *AuditAppendedV2Event) (*TypedAuditRow, error) {
 	block, err := parseUintAuto(log.BlockNumber)
 	if err != nil {
 		return nil, fmt.Errorf("blockNumber: %w", err)
@@ -385,16 +429,19 @@ func DecodeTypedAuditRow(ctx context.Context, log EVMLogRecord, workerBaseURL st
 	}
 
 	return &TypedAuditRow{
-		Envelope:         *envelope,
-		ChainID:          HeimaChainID,
-		ContractAddress:  normalizeHexHash(log.Address),
-		Block:            block,
-		BlockHash:        normalizeHexHash(log.BlockHash),
-		Timestamp:        timestamp,
-		Tx:               normalizeHexHash(log.TransactionHash),
-		TransactionIndex: txIndex,
-		LogIndex:         logIndex,
-		StreamPosition:   fmt.Sprintf("%d:%d", block, logIndex),
+		ChainID:           HeimaChainID,
+		ContractAddress:   normalizeHexHash(log.Address),
+		EventName:         event.EventName,
+		EventTopic:        event.EventTopic,
+		Block:             block,
+		BlockHash:         normalizeHexHash(log.BlockHash),
+		Timestamp:         timestamp,
+		Tx:                normalizeHexHash(log.TransactionHash),
+		TransactionIndex:  txIndex,
+		LogIndex:          logIndex,
+		StreamPosition:    fmt.Sprintf("%d:%d", block, logIndex),
+		CurrentIndexedKey: event.CurrentIndexedKey,
+		CurrentSequence:   event.CurrentSequence,
 	}, nil
 }
 
@@ -402,6 +449,18 @@ func DecodeTypedAuditRows(ctx context.Context, logs []EVMLogRecord, workerBaseUR
 	rows := make([]TypedAuditRow, 0, len(logs))
 	for _, log := range logs {
 		row, err := DecodeTypedAuditRow(ctx, log, workerBaseURL, cache)
+		if err != nil {
+			return nil, err
+		}
+		rows = append(rows, *row)
+	}
+	return rows, nil
+}
+
+func DecodeTypedAuditRowsBestEffort(ctx context.Context, logs []EVMLogRecord, workerBaseURL string, cache *EnvelopeCache) ([]TypedAuditRow, error) {
+	rows := make([]TypedAuditRow, 0, len(logs))
+	for _, log := range logs {
+		row, err := DecodeTypedAuditRowBestEffort(ctx, log, workerBaseURL, cache)
 		if err != nil {
 			return nil, err
 		}
@@ -498,10 +557,57 @@ func DecodeAuditAppendedV2Log(topics []string, data string) (*AuditAppendedV2Eve
 		return nil, fmt.Errorf("envelope_hash: %w", err)
 	}
 	return &AuditAppendedV2Event{
+		EventName:    "AuditAppendedV2",
+		EventTopic:   AuditAppendedV2Topic,
 		OperatorOmni: normalizeBytes32Topic(topics[1]),
 		ActorOmni:    normalizeBytes32Topic(topics[2]),
 		OpKind:       opKind,
 		EnvelopeHash: hash,
+	}, nil
+}
+
+func DecodeAuditAppendedLog(topics []string, data string) (*AuditAppendedV2Event, error) {
+	if len(topics) == 0 {
+		return nil, fmt.Errorf("audit event requires topic0")
+	}
+	switch {
+	case strings.EqualFold(topics[0], AuditAppendedV2Topic):
+		return DecodeAuditAppendedV2Log(topics, data)
+	case strings.EqualFold(topics[0], AuditAppendedCurrentTopic):
+		return DecodeAuditAppendedCurrentLog(topics, data)
+	default:
+		return nil, fmt.Errorf("unexpected audit event topic0 %s", topics[0])
+	}
+}
+
+func DecodeAuditAppendedCurrentLog(topics []string, data string) (*AuditAppendedV2Event, error) {
+	if len(topics) != 4 {
+		return nil, fmt.Errorf("AuditAppended requires 4 topics")
+	}
+	if !strings.EqualFold(topics[0], AuditAppendedCurrentTopic) {
+		return nil, fmt.Errorf("unexpected AuditAppended topic0 %s", topics[0])
+	}
+	opKind, err := abiUint8(data, 0)
+	if err != nil {
+		return nil, fmt.Errorf("op_kind: %w", err)
+	}
+	sequence, err := abiUint256Decimal(data, 1)
+	if err != nil {
+		return nil, fmt.Errorf("current_sequence: %w", err)
+	}
+	hash, err := abiBytes32(data, 2)
+	if err != nil {
+		return nil, fmt.Errorf("envelope_hash: %w", err)
+	}
+	return &AuditAppendedV2Event{
+		EventName:         "AuditAppended",
+		EventTopic:        AuditAppendedCurrentTopic,
+		OperatorOmni:      normalizeBytes32Topic(topics[1]),
+		ActorOmni:         normalizeBytes32Topic(topics[2]),
+		OpKind:            opKind,
+		EnvelopeHash:      hash,
+		CurrentIndexedKey: normalizeBytes32Topic(topics[3]),
+		CurrentSequence:   sequence,
 	}, nil
 }
 
@@ -665,6 +771,31 @@ func abiBytes32(data string, wordOffset int) (string, error) {
 		return "", err
 	}
 	return "0x" + word, nil
+}
+
+func abiUint8(data string, wordOffset int) (uint8, error) {
+	word, err := abiWord(data, wordOffset)
+	if err != nil {
+		return 0, err
+	}
+	prefix := strings.TrimLeft(word[:62], "0")
+	if prefix != "" {
+		return 0, fmt.Errorf("ABI word does not fit uint8")
+	}
+	n, err := strconv.ParseUint(word[62:], 16, 8)
+	return uint8(n), err
+}
+
+func abiUint256Decimal(data string, wordOffset int) (string, error) {
+	word, err := abiWord(data, wordOffset)
+	if err != nil {
+		return "", err
+	}
+	n := new(big.Int)
+	if _, ok := n.SetString(word, 16); !ok {
+		return "", fmt.Errorf("invalid ABI uint256")
+	}
+	return n.String(), nil
 }
 
 func abiWord(data string, wordOffset int) (string, error) {

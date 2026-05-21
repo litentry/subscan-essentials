@@ -89,12 +89,18 @@ func agentkeysAuditRowsHandle(c *gin.Context) {
 		cursor := encodeAgentKeysCursor(agentkeysAuditCursor{Block: rows[len(rows)-1].Block, LogIndex: rows[len(rows)-1].LogIndex})
 		nextCursor = &cursor
 	}
-	c.JSON(http.StatusOK, agentkeys.AuditRowsPage{Events: rows, NextCursor: nextCursor})
+	c.JSON(http.StatusOK, agentkeys.AuditRowsPage{
+		ChainID:         agentkeys.HeimaChainID,
+		ContractAddress: agentkeysAuditContractAddress(),
+		Events:          rows,
+		NextCursor:      nextCursor,
+	})
 }
 
 func agentkeysAuditRootHandle(c *gin.Context) {
 	root := normalizeAgentKeysBytes32(c.Param("merkle_root"))
 	rootLogs := agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), "block_num desc, `index` desc", 1,
+		model.Where("address = ?", agentkeysAuditContractAddress()),
 		model.Where("method_hash = ?", agentkeys.AuditRootAppendedV2Topic),
 		model.Where("topic2 = ?", root),
 	)
@@ -128,6 +134,7 @@ func agentkeysAuditRootHandle(c *gin.Context) {
 	leafLogs := []evmdao.EtherscanLogsRes{}
 	if rootEvent.EntryCount > 0 && len(opKindTopics) > 0 {
 		leafLogs = agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), "block_num desc, `index` desc", int(rootEvent.EntryCount),
+			model.Where("address = ?", agentkeysAuditContractAddress()),
 			model.Where("method_hash = ?", agentkeys.AuditAppendedV2Topic),
 			model.Where("topic1 = ?", rootEvent.OperatorOmni),
 			model.Where("topic3 in ?", opKindTopics),
@@ -151,6 +158,14 @@ func agentkeysAuditWorkerURL() string {
 	return workerURL
 }
 
+func agentkeysAuditContractAddress() string {
+	contract := os.Getenv("AGENTKEYS_CREDENTIAL_AUDIT_CONTRACT")
+	if contract == "" {
+		contract = agentkeys.CredentialAuditContractAddress
+	}
+	return normalizeAgentKeysAddress(contract)
+}
+
 func agentkeysAuditLimit(raw string) (int, error) {
 	if raw == "" {
 		return 50, nil
@@ -167,6 +182,7 @@ func agentkeysAuditLimit(raw string) (int, error) {
 
 func agentkeysAuditLogFilters(c *gin.Context, operator string) ([]model.Option, error) {
 	opts := []model.Option{
+		model.Where("address = ?", agentkeysAuditContractAddress()),
 		model.Where("method_hash = ?", agentkeys.AuditAppendedV2Topic),
 		model.Where("topic1 = ?", normalizeAgentKeysBytes32(operator)),
 	}
@@ -217,6 +233,13 @@ func toAgentKeysLogs(logs []evmdao.EtherscanLogsRes) []agentkeys.EVMLogRecord {
 
 func normalizeAgentKeysBytes32(value string) string {
 	return "0x" + strings.TrimPrefix(strings.ToLower(strings.TrimSpace(value)), "0x")
+}
+
+func normalizeAgentKeysAddress(value string) string {
+	value = strings.TrimSpace(value)
+	value = strings.TrimPrefix(value, "0x")
+	value = strings.TrimPrefix(value, "0X")
+	return "0x" + value
 }
 
 func encodeAgentKeysCursor(cursor agentkeysAuditCursor) string {

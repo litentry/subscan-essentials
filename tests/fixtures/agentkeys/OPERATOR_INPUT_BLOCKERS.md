@@ -1,15 +1,14 @@
 # AgentKeys Operator Input Blockers
 
 This PR implements decoder, typed-row, and root-row plumbing, but issue #12
-requires a real Heima Mainnet delivery loop. Issue #12 itself says the exact
-V2 address is supplied with the closing PR capture, while issues #3 and #4
-already list the current AgentKeys stage-1 `CredentialAudit` address:
+requires a real Heima Mainnet delivery loop. Issues #3 and #4 confirm the
+current main audit `CredentialAudit` address:
 `0x1801ded1a4FBD8c9224Ab18B9EcbB293B8674c06`.
 
-That address has non-empty bytecode on Heima Mainnet via `eth_getCode`, so the
-remaining blocker is not the address. The remaining blockers are the log lower
-bound/deploy block for the V2 audit events and the real canonical event/worker
-capture artifacts.
+That address has non-empty bytecode on Heima Mainnet via `eth_getCode`, and
+PR #13 filters AgentKeys audit queries to that contract. The remaining blocker
+is not the address. The remaining blockers are the log lower bound/deploy block
+for the V2 audit events and the real canonical event/worker capture artifacts.
 
 Do not replace the missing inputs with mock logs or hand-crafted fixture rows.
 

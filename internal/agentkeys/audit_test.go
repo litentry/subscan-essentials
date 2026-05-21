@@ -393,6 +393,8 @@ func TestDecodeTypedAuditRowsAndRootLeaves(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 	assert.Equal(t, "SignEip712", rows[0].OpKindName)
+	assert.Equal(t, uint64(HeimaChainID), rows[0].ChainID)
+	assert.Equal(t, strings.ToLower(CredentialAuditContractAddress), rows[0].ContractAddress)
 	assert.Equal(t, uint64(12), rows[0].Block)
 	assert.Equal(t, uint64(1), rows[0].LogIndex)
 	assert.Equal(t, "12:1", rows[0].StreamPosition)
@@ -401,6 +403,8 @@ func TestDecodeTypedAuditRowsAndRootLeaves(t *testing.T) {
 	rootHash := "0x" + strings.Repeat("ab", 32)
 	rootRows, err := DecodeAuditRootRows(context.Background(), auditRootLog(operator, rootHash, []uint8{21, 50}, 2, 12, 3), logs, srv.URL, NewEnvelopeCache())
 	require.NoError(t, err)
+	assert.Equal(t, uint64(HeimaChainID), rootRows.ChainID)
+	assert.Equal(t, strings.ToLower(CredentialAuditContractAddress), rootRows.ContractAddress)
 	assert.Equal(t, rootHash, rootRows.MerkleRoot)
 	assert.Equal(t, uint64(2), rootRows.EntryCount)
 	assert.Equal(t, []string{signHash, deviceHash}, rootRows.Leaves)
@@ -546,7 +550,7 @@ func canonicalFixtureEnvelope(t *testing.T, opKind uint8, operator, actor string
 
 func auditAppendedLog(operator, actor string, opKind uint8, envelopeHash string, block uint64, logIndex uint64) EVMLogRecord {
 	return EVMLogRecord{
-		Address:          "0x1111111111111111111111111111111111111111",
+		Address:          CredentialAuditContractAddress,
 		Topics:           []string{AuditAppendedV2Topic, operator, actor, PaddedOpKindTopic(opKind)},
 		Data:             envelopeHash,
 		BlockNumber:      fmt.Sprintf("0x%x", block),
@@ -564,7 +568,7 @@ func auditRootLog(operator, merkleRoot string, opKinds []uint8, entryCount uint6
 		bitmap[31-int(opKind)/8] |= byte(1 << uint(opKind%8))
 	}
 	return EVMLogRecord{
-		Address:          "0x1111111111111111111111111111111111111111",
+		Address:          CredentialAuditContractAddress,
 		Topics:           []string{AuditRootAppendedV2Topic, operator, merkleRoot},
 		Data:             "0x" + hexOf(bitmap) + fmt.Sprintf("%064x", entryCount),
 		BlockNumber:      fmt.Sprintf("0x%x", block),

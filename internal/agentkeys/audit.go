@@ -21,6 +21,9 @@ import (
 const (
 	EnvelopeVersion = 1
 
+	HeimaChainID                   = 212013
+	CredentialAuditContractAddress = "0x1801ded1a4FBD8c9224Ab18B9EcbB293B8674c06"
+
 	AuditAppendedV2Signature     = "AuditAppendedV2(bytes32,bytes32,uint8,bytes32)"
 	AuditRootAppendedV2Signature = "AuditRootAppendedV2(bytes32,bytes32,bytes32,uint64)"
 )
@@ -82,6 +85,7 @@ type EVMLogRecord struct {
 
 type TypedAuditRow struct {
 	Envelope
+	ChainID          uint64 `json:"chain_id"`
 	ContractAddress  string `json:"contract_address"`
 	Block            uint64 `json:"block"`
 	BlockHash        string `json:"block_hash"`
@@ -93,11 +97,15 @@ type TypedAuditRow struct {
 }
 
 type AuditRowsPage struct {
-	Events     []TypedAuditRow `json:"events"`
-	NextCursor *string         `json:"next_cursor"`
+	ChainID         uint64          `json:"chain_id"`
+	ContractAddress string          `json:"contract_address"`
+	Events          []TypedAuditRow `json:"events"`
+	NextCursor      *string         `json:"next_cursor"`
 }
 
 type AuditRootRows struct {
+	ChainID          uint64          `json:"chain_id"`
+	ContractAddress  string          `json:"contract_address"`
 	MerkleRoot       string          `json:"merkle_root"`
 	OperatorOmni     string          `json:"operator_omni"`
 	OpKindBitmapU256 string          `json:"op_kind_bitmap_u256"`
@@ -378,6 +386,7 @@ func DecodeTypedAuditRow(ctx context.Context, log EVMLogRecord, workerBaseURL st
 
 	return &TypedAuditRow{
 		Envelope:         *envelope,
+		ChainID:          HeimaChainID,
 		ContractAddress:  normalizeHexHash(log.Address),
 		Block:            block,
 		BlockHash:        normalizeHexHash(log.BlockHash),
@@ -431,6 +440,8 @@ func DecodeAuditRootRows(ctx context.Context, rootLog EVMLogRecord, leafLogs []E
 	}
 
 	return &AuditRootRows{
+		ChainID:          HeimaChainID,
+		ContractAddress:  normalizeHexHash(rootLog.Address),
 		MerkleRoot:       event.MerkleRoot,
 		OperatorOmni:     event.OperatorOmni,
 		OpKindBitmapU256: event.OpKindBitmapU256,

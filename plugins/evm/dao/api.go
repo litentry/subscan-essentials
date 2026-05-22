@@ -6,6 +6,7 @@ import (
 	"github.com/itering/subscan/model"
 	balanceModel "github.com/itering/subscan/plugins/balance/model"
 	"github.com/itering/subscan/util"
+	chainAddress "github.com/itering/subscan/util/address"
 	"github.com/shopspring/decimal"
 	"strings"
 )
@@ -475,16 +476,24 @@ func (a AccountsJson) Cursor() string {
 func (a *ApiSrv) AccountsCursor(ctx context.Context, address string, limit int, before, after *string) ([]AccountsJson, map[string]interface{}) {
 	var list []AccountsJson
 	fetch := limit + 1
-	q := sg.db.WithContext(ctx).Select("evm_account,balance").Model(&Account{}).Joins("join balance_accounts on evm_accounts.address=balance_accounts.address")
+	const balanceExpr = "COALESCE(balance_accounts.balance, 0)"
+	q := sg.db.WithContext(ctx).
+		Select("evm_accounts.evm_account, " + balanceExpr + " AS balance").
+		Model(&Account{}).
+		Joins("left join balance_accounts on evm_accounts.address=balance_accounts.address")
 	if address != "" {
-		q.Where("evm_account = ?", address)
+		q = q.Where("evm_accounts.evm_account = ?", chainAddress.Format(address))
 	}
 	if cursor := cursorDecode(after); len(cursor) == 2 {
-		q = q.Where("(balance,evm_account) < (?,?)", cursor[0], cursor[1]).Order("balance desc").Order("balance_accounts.address desc")
-	} else if cursor = cursorDecode(after); len(cursor) == 2 {
-		q = q.Where("(balance,evm_account) < (?,?)", cursor[0], cursor[1]).Order("balance asc").Order("balance_accounts.address asc")
+		q = q.Where("("+balanceExpr+", evm_accounts.evm_account) < (?,?)", cursor[0], cursor[1]).
+			Order(balanceExpr + " desc").
+			Order("evm_accounts.evm_account desc")
+	} else if cursor = cursorDecode(before); len(cursor) == 2 {
+		q = q.Where("("+balanceExpr+", evm_accounts.evm_account) > (?,?)", cursor[0], cursor[1]).
+			Order(balanceExpr + " asc").
+			Order("evm_accounts.evm_account asc")
 	} else {
-		q = q.Order("balance desc").Order("balance_accounts.address desc")
+		q = q.Order(balanceExpr + " desc").Order("evm_accounts.evm_account desc")
 	}
 	q.Limit(fetch).Scan(&list)
 	var hasPrev, hasNext bool

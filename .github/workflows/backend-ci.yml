@@ -60,6 +60,13 @@ jobs:
       - name: Build backend
         run: go build -o /tmp/subscan-ci ./cmd
 
+      - name: Build backend Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: subscan-essentials-ci:${{ github.sha }}
+
       - name: Run stable backend tests
         shell: bash
         run: |

@@ -157,6 +157,94 @@ html body {
   color: #ececec;
 }
 
+.contract-verify-form {
+  color: #ececec;
+}
+
+.contract-verify-form .contract-verify-group-label,
+.contract-verify-form .contract-verify-field-label,
+.contract-verify-form [data-slot="label"] {
+  color: #f4f7f8 !important;
+}
+
+.contract-verify-form .contract-verify-radio-label,
+.contract-verify-form [data-slot="description"] {
+  color: rgba(255, 255, 255, 0.84) !important;
+}
+
+.contract-verify-form .contract-verify-radio-wrapper {
+  border-color: rgba(255, 255, 255, 0.58) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+}
+
+.contract-verify-form .contract-verify-radio[data-selected="true"] .contract-verify-radio-wrapper {
+  border-color: #9cf982 !important;
+  background: rgba(156, 249, 130, 0.16) !important;
+  box-shadow: 0 0 0 1px rgba(156, 249, 130, 0.28);
+}
+
+.contract-verify-form .contract-verify-radio-control {
+  background: #9cf982 !important;
+}
+
+.contract-verify-form .contract-verify-control {
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #f4f7f8 !important;
+  box-shadow: none !important;
+}
+
+.contract-verify-form .contract-verify-control:hover,
+.contract-verify-form .contract-verify-control[data-hover="true"],
+.contract-verify-form .contract-verify-control[data-focus="true"],
+.contract-verify-form .contract-verify-control[data-focus-visible="true"] {
+  border-color: rgba(156, 249, 130, 0.52) !important;
+  background: rgba(255, 255, 255, 0.11) !important;
+}
+
+.contract-verify-form .contract-verify-control-text,
+.contract-verify-form input,
+.contract-verify-form textarea,
+.contract-verify-form [data-slot="value"] {
+  color: #f4f7f8 !important;
+}
+
+.contract-verify-form input::placeholder,
+.contract-verify-form textarea::placeholder {
+  color: rgba(255, 255, 255, 0.58) !important;
+}
+
+.contract-verify-form .contract-verify-selector-icon {
+  color: rgba(255, 255, 255, 0.76) !important;
+}
+
+.contract-verify-form .contract-verify-guide-button {
+  border: 1px solid rgba(80, 210, 193, 0.42);
+  background: rgba(80, 210, 193, 0.16);
+  color: #b8fff0;
+}
+
+.contract-verify-form .contract-verify-guide-button:hover,
+.contract-verify-form .contract-verify-guide-button[data-hover="true"] {
+  border-color: rgba(156, 249, 130, 0.58);
+  background: rgba(80, 210, 193, 0.24);
+  color: #ffffff;
+}
+
+.contract-verify-form .filepond--panel-root {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background-color: rgba(255, 255, 255, 0.08);
+}
+
+.contract-verify-form .filepond--drop-label {
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.contract-verify-form .filepond--label-action {
+  color: #b8fff0;
+  text-decoration-color: rgba(184, 255, 240, 0.78);
+}
+
 .heima-select-popover,
 [data-slot="popover"] .heima-select-popover,
 [data-slot="content"].heima-select-popover {
@@ -205,6 +293,19 @@ html body {
 }
 
 .heima-select-popover [data-slot="selectedIcon"] {
+  color: #9cf982 !important;
+}
+
+.contract-verify-select-popover .contract-verify-select-item,
+.contract-verify-select-popover [role="option"] {
+  color: #ececec !important;
+}
+
+.contract-verify-select-popover .contract-verify-select-item-title {
+  color: #ececec !important;
+}
+
+.contract-verify-select-popover .contract-verify-select-selected-icon {
   color: #9cf982 !important;
 }
 

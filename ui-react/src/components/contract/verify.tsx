@@ -1,16 +1,7 @@
 import React, { useMemo, useState } from 'react'
 
 import { BareProps } from '@/types/page'
-import {
-  Button,
-  RadioGroup,
-  Radio,
-  Input,
-  Select,
-  SelectItem,
-  Textarea,
-  addToast,
-} from '@heroui/react'
+import { Button, RadioGroup, Radio, Input, Select, SelectItem, Textarea, addToast } from '@heroui/react'
 import { unwrap, usePVMResolcs, usePVMSolcs } from '@/utils/api'
 import { getThemeColor, parseFileText } from '@/utils/text'
 import { FileUpload } from '../file'
@@ -22,6 +13,44 @@ import { env } from 'next-runtime-env'
 
 interface Props extends BareProps {
   address: string
+}
+
+const fieldLabelClassName = 'contract-verify-field-label mb-2 text-sm font-medium'
+const radioGroupClassNames = {
+  label: 'contract-verify-group-label text-sm font-medium',
+}
+const radioClassNames = {
+  base: 'contract-verify-radio',
+  wrapper: 'contract-verify-radio-wrapper',
+  control: 'contract-verify-radio-control',
+  label: 'contract-verify-radio-label',
+}
+const inputClassNames = {
+  inputWrapper: 'contract-verify-control',
+  input: 'contract-verify-control-text',
+}
+const textareaClassNames = {
+  inputWrapper: 'contract-verify-control',
+  input: 'contract-verify-control-text',
+}
+const selectClassNames = {
+  trigger: 'contract-verify-control',
+  value: 'contract-verify-control-text',
+  selectorIcon: 'contract-verify-selector-icon',
+  listbox: 'contract-verify-listbox',
+  listboxWrapper: 'contract-verify-listbox-wrapper',
+}
+const selectPopoverProps = {
+  classNames: {
+    content: 'heima-select-popover contract-verify-select-popover',
+  },
+}
+const selectListboxProps = {
+  itemClasses: {
+    base: 'contract-verify-select-item',
+    title: 'contract-verify-select-item-title',
+    selectedIcon: 'contract-verify-select-selected-icon',
+  },
 }
 
 const Component: React.FC<Props> = ({ children, className, address }) => {
@@ -99,19 +128,19 @@ const Component: React.FC<Props> = ({ children, className, address }) => {
     if (compilerType === 'json') {
       if (!files) {
         addToast({
-            title: 'Warning',
-            description: 'Please upload the Standard-Input-JSON file.',
-            color: 'warning',
-          });
+          title: 'Warning',
+          description: 'Please upload the Standard-Input-JSON file.',
+          color: 'warning',
+        })
         return
       }
     } else if (compilerType === 'single') {
       if (!code) {
         addToast({
-            title: 'Warning',
-            description: 'Please enter the Solidity contract code.',
-            color: 'warning',
-          });
+          title: 'Warning',
+          description: 'Please enter the Solidity contract code.',
+          color: 'warning',
+        })
         return
       }
     }
@@ -172,7 +201,7 @@ const Component: React.FC<Props> = ({ children, className, address }) => {
             title: 'Error',
             description: res.data.result || res.data.message,
             color: 'secondary',
-          });
+          })
         } else {
           window.location.reload()
         }
@@ -180,19 +209,19 @@ const Component: React.FC<Props> = ({ children, className, address }) => {
       })
       .catch((err) => {
         addToast({
-            title: 'Error',
-            description: err.response?.data?.result || err.message,
-            color: 'secondary',
-          });
+          title: 'Error',
+          description: err.response?.data?.result || err.message,
+          color: 'secondary',
+        })
         setIsLoading(false)
       })
   }
-  
+
   return (
-    <div className="space-y-5 relative">
-      <div className='absolute right-2 z-10'>
+    <div className={`contract-verify-form space-y-5 relative ${className || ''}`}>
+      <div className="absolute right-2 z-10">
         <Link target="_blank" href="https://github.com/subscan-explorer/subscan-essentials/blob/master/docs/pvm_contract_verify.md">
-          <Button>Verify Guide</Button>
+          <Button className="contract-verify-guide-button">Verify Guide</Button>
         </Link>
       </div>
       <div>
@@ -201,16 +230,18 @@ const Component: React.FC<Props> = ({ children, className, address }) => {
           onValueChange={setCompilerType}
           label="Compiler Type"
           orientation="horizontal"
-          classNames={{
-            label: 'text-black',
-          }}>
-          <Radio value="json">Solidity (Standard-JSON-Input)</Radio>
-          <Radio value="single">Solidity (Single file)</Radio>
+          classNames={radioGroupClassNames}>
+          <Radio classNames={radioClassNames} value="json">
+            Solidity (Standard-JSON-Input)
+          </Radio>
+          <Radio classNames={radioClassNames} value="single">
+            Solidity (Single file)
+          </Radio>
         </RadioGroup>
       </div>
       <div>
-        <div className="mb-2">Contract Name</div>
-        <Input value={name} onValueChange={setName} label="" name="contract_name" placeholder="Optional" type="text" />
+        <div className={fieldLabelClassName}>Contract Name</div>
+        <Input classNames={inputClassNames} value={name} onValueChange={setName} label="" name="contract_name" placeholder="Optional" type="text" />
       </div>
       <div>
         <RadioGroup
@@ -218,18 +249,23 @@ const Component: React.FC<Props> = ({ children, className, address }) => {
           onValueChange={setNightly}
           label="Include nightly builds"
           orientation="horizontal"
-          classNames={{
-            label: 'text-black',
-          }}>
-          <Radio value="true">Yes</Radio>
-          <Radio value="false">No</Radio>
+          classNames={radioGroupClassNames}>
+          <Radio classNames={radioClassNames} value="true">
+            Yes
+          </Radio>
+          <Radio classNames={radioClassNames} value="false">
+            No
+          </Radio>
         </RadioGroup>
       </div>
       {compilerType === 'single' && (
         <div>
-          <div className="mb-2">EVM Contract Version</div>
+          <div className={fieldLabelClassName}>EVM Contract Version</div>
           <Select
             className="max-w-xs"
+            classNames={selectClassNames}
+            listboxProps={selectListboxProps}
+            popoverProps={selectPopoverProps}
             label=""
             selectedKeys={evmVersion}
             onSelectionChange={(key) => {
@@ -244,9 +280,12 @@ const Component: React.FC<Props> = ({ children, className, address }) => {
         </div>
       )}
       <div>
-        <div className="mb-2">Compiler Version</div>
+        <div className={fieldLabelClassName}>Compiler Version</div>
         <Select
           className="max-w-xs"
+          classNames={selectClassNames}
+          listboxProps={selectListboxProps}
+          popoverProps={selectPopoverProps}
           label=""
           selectedKeys={compiler}
           onSelectionChange={(key) => {
@@ -260,9 +299,12 @@ const Component: React.FC<Props> = ({ children, className, address }) => {
         </Select>
       </div>
       <div>
-        <div className="mb-2">Resolc Version</div>
+        <div className={fieldLabelClassName}>Resolc Version</div>
         <Select
           className="max-w-xs"
+          classNames={selectClassNames}
+          listboxProps={selectListboxProps}
+          popoverProps={selectPopoverProps}
           label=""
           selectedKeys={resolc}
           onSelectionChange={(key) => {
@@ -283,42 +325,48 @@ const Component: React.FC<Props> = ({ children, className, address }) => {
               onValueChange={setOptimization}
               label="Optimization"
               orientation="horizontal"
-              classNames={{
-                label: 'text-black',
-              }}>
-              <Radio value="true">Yes</Radio>
-              <Radio value="false">No</Radio>
+              classNames={radioGroupClassNames}>
+              <Radio classNames={radioClassNames} value="true">
+                Yes
+              </Radio>
+              <Radio classNames={radioClassNames} value="false">
+                No
+              </Radio>
             </RadioGroup>
           </div>
           {optimization === 'true' ? (
             <div>
-              <div className="mb-2">Optimization runs</div>
-              <Input value={optimizationRuns} onValueChange={setOptimizationRuns} label="" name="optimization_runs" placeholder="" type="text" />
+              <div className={fieldLabelClassName}>Optimization runs</div>
+              <Input
+                classNames={inputClassNames}
+                value={optimizationRuns}
+                onValueChange={setOptimizationRuns}
+                label=""
+                name="optimization_runs"
+                placeholder=""
+                type="text"
+              />
             </div>
           ) : null}
         </>
       )}
       {compilerType === 'json' && (
         <div>
-          <div className="mb-2">Upload the Standard-Input-JSON (*.json) File</div>
+          <div className={fieldLabelClassName}>Upload the Standard-Input-JSON (*.json) File</div>
           <FileUpload onChange={setFiles} value={files}></FileUpload>
         </div>
       )}
       {compilerType === 'single' && (
         <div>
-          <div className="mb-2">Enter the Solidity Contract Code</div>
-          <Textarea
-            value={code}
-            onValueChange={setCode}
-            minRows={10}
-            placeholder=""
-          />
+          <div className={fieldLabelClassName}>Enter the Solidity Contract Code</div>
+          <Textarea classNames={textareaClassNames} value={code} onValueChange={setCode} minRows={10} placeholder="" />
         </div>
       )}
       {compilerType === 'single' && (
         <div>
-          <div className="mb-2">Compilation Target</div>
+          <div className={fieldLabelClassName}>Compilation Target</div>
           <Input
+            classNames={inputClassNames}
             value={target}
             onValueChange={setTarget}
             label=""
@@ -329,7 +377,9 @@ const Component: React.FC<Props> = ({ children, className, address }) => {
         </div>
       )}
       <div className="flex gap-4">
-        <Button isLoading={isLoading} color={getThemeColor()} onPress={submitForm}>Verify & Publish</Button>
+        <Button isLoading={isLoading} color={getThemeColor()} onPress={submitForm}>
+          Verify & Publish
+        </Button>
         <Button onPress={reset}>Reset</Button>
       </div>
     </div>

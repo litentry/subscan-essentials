@@ -69,3 +69,42 @@ func TestAccountsCursorBeforeUsesBeforeCursor(t *testing.T) {
 	assert.Equal(t, false, page["has_previous_page"])
 	assert.Equal(t, true, page["has_next_page"])
 }
+
+func TestContractsCursorVerifiedSourceOnly(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&Contract{}))
+
+	sg = &Storage{db: db}
+
+	ctx := context.Background()
+	contracts := []Contract{
+		{
+			Address:          "0x0000000000000000000000000000000000000001",
+			ContractName:     "VerifiedWithSource",
+			VerifyStatus:     "verified",
+			SourceCode:       "pragma solidity ^0.8.0; contract VerifiedWithSource {}",
+			TransactionCount: 30,
+		},
+		{
+			Address:          "0x0000000000000000000000000000000000000002",
+			ContractName:     "VerifiedWithoutSource",
+			VerifyStatus:     "verified",
+			TransactionCount: 20,
+		},
+		{
+			Address:          "0x0000000000000000000000000000000000000003",
+			ContractName:     "UnverifiedWithSource",
+			SourceCode:       "pragma solidity ^0.8.0; contract UnverifiedWithSource {}",
+			TransactionCount: 10,
+		},
+	}
+	require.NoError(t, db.Create(&contracts).Error)
+
+	list, page := (&ApiSrv{}).ContractsCursor(ctx, 10, nil, nil, true)
+
+	require.Len(t, list, 1)
+	assert.Equal(t, "VerifiedWithSource", list[0].ContractName)
+	assert.Equal(t, "verified", list[0].VerifyStatus)
+	assert.Equal(t, false, page["has_next_page"])
+}

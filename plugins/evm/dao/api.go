@@ -477,12 +477,12 @@ func (a *ApiSrv) AccountsCursor(ctx context.Context, address string, limit int, 
 	fetch := limit + 1
 	q := sg.db.WithContext(ctx).Select("evm_account,balance").Model(&Account{}).Joins("join balance_accounts on evm_accounts.address=balance_accounts.address")
 	if address != "" {
-		q.Where("evm_account = ?", address)
+		q = q.Where("evm_account = ?", address)
 	}
 	if cursor := cursorDecode(after); len(cursor) == 2 {
 		q = q.Where("(balance,evm_account) < (?,?)", cursor[0], cursor[1]).Order("balance desc").Order("balance_accounts.address desc")
-	} else if cursor = cursorDecode(after); len(cursor) == 2 {
-		q = q.Where("(balance,evm_account) < (?,?)", cursor[0], cursor[1]).Order("balance asc").Order("balance_accounts.address asc")
+	} else if cursor = cursorDecode(before); len(cursor) == 2 {
+		q = q.Where("(balance,evm_account) > (?,?)", cursor[0], cursor[1]).Order("balance asc").Order("balance_accounts.address asc")
 	} else {
 		q = q.Order("balance desc").Order("balance_accounts.address desc")
 	}
@@ -582,7 +582,7 @@ func (a *ApiSrv) AccountTokens(ctx context.Context, address, category string) []
 	q := sg.db.WithContext(ctx).Select("evm_token_holders.contract,balance,category,decimals,symbol,name").Model(&TokenHolder{}).
 		Joins("join evm_tokens on evm_token_holders.contract=evm_tokens.contract").Where("holder = ?", address)
 	if category != "" {
-		q.Where("category = ?", category)
+		q = q.Where("category = ?", category)
 	}
 	q.Scan(&tokenHolders)
 	return tokenHolders
@@ -609,10 +609,10 @@ func (a *ApiSrv) CollectiblesCursor(ctx context.Context, address string, contrac
 	fetch := limit + 1
 	q := sg.db.WithContext(ctx).Model(&Erc721Holders{})
 	if address != "" {
-		q.Where("holder = ?", address)
+		q = q.Where("holder = ?", address)
 	}
 	if contract != "" {
-		q.Where("contract = ?", contract)
+		q = q.Where("contract = ?", contract)
 	}
 	if cursor := cursorDecode(after); len(cursor) == 2 {
 		q = q.Where("(contract,token_id) < (?,?)", cursor[0], cursor[1]).Order("contract desc").Order("token_id desc")
@@ -662,10 +662,10 @@ func (a *ApiSrv) TokenListCursor(ctx context.Context, contract, category string,
 	fetch := limit + 1
 	q := sg.db.WithContext(ctx).Model(&Token{})
 	if category != "" {
-		q.Where("category = ?", category)
+		q = q.Where("category = ?", category)
 	}
 	if contract != "" {
-		q.Where("contract = ?", contract)
+		q = q.Where("contract = ?", contract)
 	}
 	if cursor := cursorDecode(after); len(cursor) == 2 {
 		q = q.Where("(holders,contract) < (?,?)", cursor[0], cursor[1]).Order("holders desc").Order("contract desc")
@@ -715,13 +715,13 @@ func (a *ApiSrv) TokenTransfersCursor(ctx context.Context, address, tokenAddress
 	fetch := limit + 1
 	q := sg.db.WithContext(ctx).Model(&TokensTransfers{})
 	if address != "" {
-		q.Where("sender = ? or receiver = ?", address, address)
+		q = q.Where("sender = ? or receiver = ?", address, address)
 	}
 	if tokenAddress != "" {
-		q.Where("contract = ?", tokenAddress)
+		q = q.Where("contract = ?", tokenAddress)
 	}
 	if category != "" {
-		q.Where("category = ?", category)
+		q = q.Where("category = ?", category)
 	}
 	if after != nil && *after > 0 {
 		q = q.Where("transfer_id < ?", *after).Order("transfer_id desc")
@@ -782,7 +782,7 @@ func (a *ApiSrv) TokenHoldersCursor(ctx context.Context, address string, limit i
 	var list []TokenHolder
 	fetch := limit + 1
 	q := sg.db.WithContext(ctx).Model(&TokenHolder{}).Where("balance > 0")
-	q.Where("contract = ?", address)
+	q = q.Where("contract = ?", address)
 	if cursor := cursorDecode(after); len(cursor) == 2 {
 		q = q.Where("(balance,id) < (?,?)", cursor[0], cursor[1]).Order("balance desc").Order("id desc")
 	} else if cursor = cursorDecode(before); len(cursor) == 2 {

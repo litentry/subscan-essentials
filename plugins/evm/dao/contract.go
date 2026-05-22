@@ -6,12 +6,15 @@ import (
 	"errors"
 	"fmt"
 	"github.com/ethereum/go-ethereum/accounts/abi"
+	"github.com/ethereum/go-ethereum/common"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/itering/subscan/model"
 	evmABI "github.com/itering/subscan/plugins/evm/abi"
 	evmContract "github.com/itering/subscan/plugins/evm/contract"
 	"github.com/itering/subscan/plugins/evm/feature/delegateProxy"
 	"github.com/itering/subscan/share/web3"
 	"github.com/itering/subscan/util"
+	"github.com/itering/subscan/util/address"
 	"regexp"
 	"strconv"
 	"strings"
@@ -264,14 +267,49 @@ func ContractMethodList(ctx context.Context) (list []datatypes.JSON, err error) 
 }
 
 func ContractsByAddr(ctx context.Context, contracts string) (contract *Contract) {
-	if q := sg.db.Model(Contract{}).Where("address = ?", contracts).First(&contract); q.Error != nil {
-		return nil
+	contractAddress := address.Format(contracts)
+	if contractAddress == "" {
+		contractAddress = contracts
+	}
+
+	var dbContract Contract
+	if q := sg.db.WithContext(ctx).Model(Contract{}).Where("address = ?", contractAddress).First(&dbContract); q.Error != nil {
+		if !errors.Is(q.Error, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		contract = backfillContractFromRuntimeCode(ctx, contractAddress)
+		if contract == nil {
+			return nil
+		}
+	} else {
+		contract = &dbContract
 	}
 
 	if len(contract.Abi) > 0 && contract.Abi.String() != "null" {
 		contract.EventIdentifiers = findEventIdentifiers(ctx, contract.Abi)
 	}
 	return
+}
+
+func backfillContractFromRuntimeCode(ctx context.Context, contractAddress string) *Contract {
+	if web3.RPC == nil || web3.RPC.Eth == nil {
+		return nil
+	}
+
+	code, err := web3.RPC.Eth.GetCode(ctx, contractAddress, "latest")
+	if err != nil || code == "" || code == "0x" {
+		return nil
+	}
+
+	contract := &Contract{
+		Address:          contractAddress,
+		CreationBytecode: code,
+		DeployCodeHash:   common.BytesToHash(crypto.Keccak256(util.HexToBytes(code))).Hex(),
+	}
+	if err = sg.AddOrUpdateItem(ctx, contract, []string{"address"}, "creation_bytecode", "deploy_code_hash").Error; err != nil {
+		return nil
+	}
+	return contract
 }
 
 func findEventIdentifiers(_ context.Context, abiRaw []byte) []byte {

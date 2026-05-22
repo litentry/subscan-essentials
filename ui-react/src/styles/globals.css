@@ -2,7 +2,6 @@
 @tailwind components;
 @tailwind utilities;
 
-
 @supports (bottom: constant(safe-area-inset-bottom)) or (bottom: env(safe-area-inset-bottom)) {
   .safe-area {
     padding-bottom: constant(safe-area-inset-bottom) !important;
@@ -20,10 +19,8 @@ html body {
 }
 
 .heima-shell {
-  background:
-    radial-gradient(circle at 76% 12rem, rgba(156, 249, 130, 0.12), transparent 34rem),
-    radial-gradient(circle at 18% 8rem, rgba(18, 198, 197, 0.1), transparent 28rem),
-    linear-gradient(180deg, #101214 0%, #0f1012 42rem, #050606 100%);
+  background: radial-gradient(circle at 76% 12rem, rgba(156, 249, 130, 0.12), transparent 34rem),
+    radial-gradient(circle at 18% 8rem, rgba(18, 198, 197, 0.1), transparent 28rem), linear-gradient(180deg, #101214 0%, #0f1012 42rem, #050606 100%);
   color: #ececec;
 }
 
@@ -69,14 +66,14 @@ html body {
 }
 
 .heima-shell .bg-content1,
-.heima-shell [data-slot="base"].bg-content1 {
+.heima-shell [data-slot='base'].bg-content1 {
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: linear-gradient(180deg, rgba(23, 24, 25, 0.96) 0%, rgba(12, 14, 15, 0.96) 100%);
   color: #ececec;
   box-shadow: 0 18px 48px rgba(0, 0, 0, 0.24);
 }
 
-.heima-shell [data-slot="wrapper"]:has(table) {
+.heima-shell [data-slot='wrapper']:has(table) {
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: linear-gradient(180deg, rgba(23, 24, 25, 0.96) 0%, rgba(12, 14, 15, 0.96) 100%) !important;
   color: #ececec;
@@ -88,23 +85,23 @@ html body {
 }
 
 .heima-shell thead tr,
-.heima-shell [data-slot="th"],
+.heima-shell [data-slot='th'],
 .heima-shell .bg-default-100 {
   background: rgba(255, 255, 255, 0.07) !important;
   color: rgba(255, 255, 255, 0.68) !important;
 }
 
-.heima-shell [data-slot="tr"] {
+.heima-shell [data-slot='tr'] {
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 }
 
-.heima-shell [data-slot="td"],
+.heima-shell [data-slot='td'],
 .heima-shell td {
   color: rgba(255, 255, 255, 0.82);
 }
 
-.heima-shell [data-slot="empty-wrapper"],
-.heima-shell [data-slot="loading-wrapper"] {
+.heima-shell [data-slot='empty-wrapper'],
+.heima-shell [data-slot='loading-wrapper'] {
   color: rgba(255, 255, 255, 0.64);
 }
 
@@ -129,37 +126,37 @@ html body {
   color: #9cf982;
 }
 
-.heima-shell [data-slot="tabList"] {
+.heima-shell [data-slot='tabList'] {
   background: rgba(255, 255, 255, 0.04);
 }
 
-.heima-shell [data-slot="tab"] {
+.heima-shell [data-slot='tab'] {
   color: rgba(255, 255, 255, 0.68);
 }
 
-.heima-shell [data-selected="true"][data-slot="tab"] {
+.heima-shell [data-selected='true'][data-slot='tab'] {
   color: #ececec;
 }
 
-.heima-shell [data-slot="cursor"] {
+.heima-shell [data-slot='cursor'] {
   background: #12c6c5;
 }
 
-.heima-shell [data-slot="separator"] {
+.heima-shell [data-slot='separator'] {
   background: rgba(255, 255, 255, 0.12);
 }
 
-.heima-shell [data-slot="prev"],
-.heima-shell [data-slot="next"],
-.heima-shell [data-slot="item"] {
+.heima-shell [data-slot='prev'],
+.heima-shell [data-slot='next'],
+.heima-shell [data-slot='item'] {
   border-color: rgba(255, 255, 255, 0.12);
   background: rgba(255, 255, 255, 0.06);
   color: #ececec;
 }
 
 .heima-select-popover,
-[data-slot="popover"] .heima-select-popover,
-[data-slot="content"].heima-select-popover {
+[data-slot='popover'] .heima-select-popover,
+[data-slot='content'].heima-select-popover {
   border: 1px solid rgba(255, 255, 255, 0.12);
   background: #121415 !important;
   color: #ececec !important;
@@ -169,23 +166,23 @@ html body {
   overflow: visible !important;
 }
 
-.heima-select-popover [data-slot="listbox"],
-.heima-select-popover [data-slot="listboxWrapper"],
-.heima-select-popover [role="listbox"] {
+.heima-select-popover [data-slot='listbox'],
+.heima-select-popover [data-slot='listboxWrapper'],
+.heima-select-popover [role='listbox'] {
   color: #ececec;
   max-height: none !important;
   overflow: visible !important;
 }
 
-.heima-select-popover [data-slot="base"] {
+.heima-select-popover [data-slot='base'] {
   color: #ececec !important;
 }
 
-.heima-select-popover [role="option"] {
+.heima-select-popover [role='option'] {
   color: #ececec !important;
 }
 
-.heima-select-popover [data-slot="title"] {
+.heima-select-popover [data-slot='title'] {
   color: #ececec !important;
   max-width: none !important;
   overflow: visible !important;
@@ -193,28 +190,111 @@ html body {
   white-space: nowrap !important;
 }
 
-.heima-select-popover [data-slot="base"][data-hover="true"],
-.heima-select-popover [data-slot="base"][data-focus="true"],
-.heima-select-popover [data-slot="base"][data-selected="true"],
-.heima-select-popover [data-slot="base"][aria-selected="true"],
-.heima-select-popover [role="option"][data-focus="true"],
-.heima-select-popover [role="option"][data-hover="true"],
-.heima-select-popover [role="option"][aria-selected="true"] {
+.heima-select-popover [data-slot='base'][data-hover='true'],
+.heima-select-popover [data-slot='base'][data-focus='true'],
+.heima-select-popover [data-slot='base'][data-selected='true'],
+.heima-select-popover [data-slot='base'][aria-selected='true'],
+.heima-select-popover [role='option'][data-focus='true'],
+.heima-select-popover [role='option'][data-hover='true'],
+.heima-select-popover [role='option'][aria-selected='true'] {
   background: rgba(255, 255, 255, 0.1) !important;
   color: #ffffff !important;
 }
 
-.heima-select-popover [data-slot="selectedIcon"] {
+.heima-select-popover [data-slot='selectedIcon'] {
   color: #9cf982 !important;
 }
 
-input[type=number] { 
-  -moz-appearance: textfield;
-  appearance: textfield;
-  margin: 0; 
+.heima-shell .contract-verify-form {
+  color: #ececec;
 }
 
-input[type=number]::-webkit-inner-spin-button {
+.heima-shell .contract-verify-form .text-black {
+  color: #ececec !important;
+}
+
+.heima-shell .contract-verify-form .verify-guide-button {
+  border: 1px solid rgba(156, 249, 130, 0.42);
+  background: rgba(156, 249, 130, 0.16);
+  color: #f2ffe9;
+  font-weight: 600;
+}
+
+.heima-shell .contract-verify-form .verify-guide-button:hover {
+  border-color: rgba(156, 249, 130, 0.68);
+  background: rgba(156, 249, 130, 0.24);
+  color: #ffffff;
+}
+
+.heima-shell .contract-verify-form .form-secondary-button {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.08);
+  color: #ececec;
+}
+
+.heima-shell .contract-verify-form .form-secondary-button:hover {
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.12);
+  color: #ffffff;
+}
+
+.heima-shell .contract-verify-form [data-slot='label'],
+.heima-shell .contract-verify-form [data-slot='description'],
+.heima-shell .contract-verify-form .filepond--label-action {
+  color: rgba(255, 255, 255, 0.82) !important;
+}
+
+.heima-shell .contract-verify-form [data-slot='control'] {
+  border-color: rgba(255, 255, 255, 0.58) !important;
+  background: rgba(255, 255, 255, 0.05) !important;
+}
+
+.heima-shell .contract-verify-form [data-selected='true'] [data-slot='control'],
+.heima-shell .contract-verify-form [aria-checked='true'] [data-slot='control'] {
+  border-color: #9cf982 !important;
+  background: #9cf982 !important;
+}
+
+.heima-shell .contract-verify-form [data-slot='input-wrapper'],
+.heima-shell .contract-verify-form [data-slot='inner-wrapper'],
+.heima-shell .contract-verify-form [data-slot='trigger'] {
+  border: 1px solid rgba(255, 255, 255, 0.16) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ececec !important;
+}
+
+.heima-shell .contract-verify-form [data-slot='input'],
+.heima-shell .contract-verify-form [data-slot='value'],
+.heima-shell .contract-verify-form [data-slot='selectorIcon'] {
+  color: #f7f8f8 !important;
+}
+
+.heima-shell .contract-verify-form [data-slot='input']::placeholder,
+.heima-shell .contract-verify-form [data-slot='value'][data-placeholder='true'] {
+  color: rgba(255, 255, 255, 0.58) !important;
+}
+
+.heima-shell .contract-verify-form [data-disabled='true'],
+.heima-shell .contract-verify-form [aria-disabled='true'] {
+  color: rgba(255, 255, 255, 0.5) !important;
+  opacity: 1 !important;
+}
+
+.heima-shell .contract-verify-form .filepond--panel-root {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.heima-shell .contract-verify-form .filepond--drop-label {
+  color: rgba(255, 255, 255, 0.72);
+}
+
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+  margin: 0;
+}
+
+input[type='number']::-webkit-inner-spin-button {
   -webkit-appearance: none;
-  margin: 0; 
+  margin: 0;
 }

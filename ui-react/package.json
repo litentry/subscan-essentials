@@ -2,7 +2,7 @@
   "name": "subscan-essential-ui-next",
   "version": "0.1.0",
   "scripts": {
-    "dev": "NEXT_PUBLIC_API_HOST='https://assethub-westend-lite.webapi.subscan.io' next dev",
+    "dev": "NEXT_PUBLIC_API_HOST='https://explorer-api.heima.network' next dev",
     "build": "next build",
     "analyze-build": "ANALYZE=true npm run build",
     "start": "next start",

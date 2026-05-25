@@ -9,6 +9,7 @@ import (
 	"github.com/itering/subscan/plugins/balance/http"
 	"github.com/itering/subscan/plugins/balance/model"
 	"github.com/itering/subscan/plugins/balance/service"
+	"github.com/itering/subscan/util/address"
 	"github.com/shopspring/decimal"
 	"github.com/urfave/cli"
 	"strings"
@@ -35,6 +36,20 @@ func (a *Balance) Commands() []cli.Command {
 			Action: func(c *cli.Context) error {
 				dao.RefreshAllAccount(a.storage())
 				return nil
+			},
+		},
+		{
+			Name:  "RefreshAccount",
+			Usage: "Refresh one account balance from chain storage",
+			Flags: []cli.Flag{
+				cli.StringFlag{Name: "address", Usage: "account SS58 address or account id"},
+			},
+			Action: func(c *cli.Context) error {
+				account := c.String("address")
+				if account == "" {
+					return cli.NewExitError("address is required", 1)
+				}
+				return dao.RefreshAccount(context.Background(), a.storage(), address.Decode(account))
 			},
 		},
 		{

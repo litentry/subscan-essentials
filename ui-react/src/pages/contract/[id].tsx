@@ -1,7 +1,7 @@
 import React from 'react'
 import { CardBody, Card, Tabs, Tab, Divider } from '@heroui/react'
 import { useRouter } from 'next/router'
-import { getBalanceAmount, getThemeColor } from '@/utils/text'
+import { formatBalanceAmount, getThemeColor } from '@/utils/text'
 import { unwrap, usePVMAccounts, usePVMContract } from '@/utils/api'
 import { useData } from '@/context'
 import { TxTable } from '@/components/tx'
@@ -69,7 +69,7 @@ export default function Page() {
                     <div className="flex items-center">
                       <div className="w-48">Balance</div>
                       <div>
-                        {getBalanceAmount(new BigNumber(accountData?.balance || 0), token?.decimals).toFormat()} {token?.symbol}
+                        {formatBalanceAmount(new BigNumber(accountData?.balance || 0), token?.decimals)} {token?.symbol}
                       </div>
                     </div>
                     <Divider className="my-2.5" />

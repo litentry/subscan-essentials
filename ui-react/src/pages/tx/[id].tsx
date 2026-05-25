@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react'
 import { CardBody, Card, Divider } from '@heroui/react'
 import { useRouter } from 'next/router'
-import { getBalanceAmount, getUTCTime, timeAgo } from '@/utils/text'
+import { formatBalanceAmount, getUTCTime, timeAgo } from '@/utils/text'
 import { unwrap, usePVMTx } from '@/utils/api'
 import { Container, PageContent } from '@/ui'
 import { PVM_DECIMAL } from '@/utils/const'
@@ -87,7 +87,7 @@ export default function Page() {
                     <Divider className="my-2.5" />
                     <div className="flex items-center">
                       <div className="w-48">Value</div>
-                      <div>{getBalanceAmount(new BigNumber(extrinsicData.value), PVM_DECIMAL).toFormat()}</div>
+                      <div>{formatBalanceAmount(new BigNumber(extrinsicData.value), PVM_DECIMAL)}</div>
                     </div>
                     <Divider className="my-2.5" />
                     <div className="flex items-center">
@@ -110,12 +110,12 @@ export default function Page() {
                     <div className="flex items-center">
                       <div className="w-48">Txn Fee</div>
                       <div>
-                        {getBalanceAmount(
+                        {formatBalanceAmount(
                           new BigNumber(extrinsicData.gas_used).times(
                             extrinsicData.txn_type === 2 ? extrinsicData.effective_gas_price : extrinsicData.gas_price
                           ),
                           PVM_DECIMAL
-                        ).toFormat()}
+                        )}
                       </div>
                     </div>
                     <Divider className="my-2.5" />

@@ -22,6 +22,7 @@ export default function Page() {
   })
 
   const accountData = unwrap(data)
+  const tokenSymbol = token?.symbol ? ` ${token.symbol}` : ''
 
   const transferable = useMemo(() => {
     if (accountData) {
@@ -56,27 +57,42 @@ export default function Page() {
                   <CardBody>
                     <div className="flex items-center">
                       <div className="w-48">Total Balance</div>
-                      <div>{formatBalanceAmount(new BigNumber(accountData.balance), token?.decimals)}</div>
+                      <div>
+                        {formatBalanceAmount(new BigNumber(accountData.balance), token?.decimals)}
+                        {tokenSymbol}
+                      </div>
                     </div>
                     <Divider className="my-2.5" />
                     <div className="flex items-center">
                       <div className="w-48">Transferrable</div>
-                      <div>{formatBalanceAmount(transferable, token?.decimals)}</div>
+                      <div>
+                        {formatBalanceAmount(transferable, token?.decimals)}
+                        {tokenSymbol}
+                      </div>
                     </div>
                     <Divider className="my-2.5" />
                     <div className="flex items-center">
                       <div className="w-48">Locked</div>
-                      <div>{formatBalanceAmount(new BigNumber(accountData.locked), token?.decimals)}</div>
+                      <div>
+                        {formatBalanceAmount(new BigNumber(accountData.locked), token?.decimals)}
+                        {tokenSymbol}
+                      </div>
                     </div>
                     <Divider className="my-2.5" />
                     <div className="flex items-center">
                       <div className="w-48">Vested</div>
-                      <div>{formatBalanceAmount(new BigNumber(accountData.vested || 0), token?.decimals)}</div>
+                      <div>
+                        {formatBalanceAmount(new BigNumber(accountData.vested || 0), token?.decimals)}
+                        {tokenSymbol}
+                      </div>
                     </div>
                     <Divider className="my-2.5" />
                     <div className="flex items-center">
                       <div className="w-48">Reserved</div>
-                      <div>{formatBalanceAmount(new BigNumber(accountData.reserved), token?.decimals)}</div>
+                      <div>
+                        {formatBalanceAmount(new BigNumber(accountData.reserved), token?.decimals)}
+                        {tokenSymbol}
+                      </div>
                     </div>
                   </CardBody>
                 </Card>

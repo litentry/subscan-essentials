@@ -1,8 +1,8 @@
-import React, { useMemo } from 'react'
+import React, { useEffect, useMemo, useState } from 'react'
 import { CardBody, Card, Divider } from '@heroui/react'
-import { useRouter } from 'next/router'
+import { useRouter } from 'next/compat/router'
 import { getBalanceAmount, getUTCTime, timeAgo } from '@/utils/text'
-import { unwrap, usePVMTx } from '@/utils/api'
+import { unwrap, useAgentKeysContract, usePVMTx } from '@/utils/api'
 import { Container, PageContent } from '@/ui'
 import { PVM_DECIMAL } from '@/utils/const'
 import BigNumber from 'bignumber.js'
@@ -11,23 +11,47 @@ import { OverflowText } from '@/components/overflowText'
 import { Link } from '@/components/link'
 import { env } from 'next-runtime-env'
 import { LoadingSpinner, LoadingText } from '@/components/loading'
+import { findAgentKeysWriteFunction, routeSegment } from '@/utils/agentkeys'
 
 export default function Page() {
   const router = useRouter()
-  const id = router.query.id as string
+  const [id, setId] = useState<string | undefined>()
+  useEffect(() => {
+    setId((router?.query.id as string | undefined) || routeSegment(router?.asPath))
+  }, [router?.asPath, router?.query.id])
   const NEXT_PUBLIC_API_HOST = env('NEXT_PUBLIC_API_HOST') || ''
 
   const { data, isLoading } = usePVMTx(NEXT_PUBLIC_API_HOST, {
-    hash: id as string,
+    hash: id || '',
   })
 
   const extrinsicData = unwrap(data)
+  const { data: agentKeysContractData } = useAgentKeysContract(
+    NEXT_PUBLIC_API_HOST,
+    extrinsicData?.to_address ? { address: extrinsicData.to_address } : null
+  )
+  const agentKeysContract = unwrap(agentKeysContractData)?.contract
+  const [decodedAgentKeysCall, setDecodedAgentKeysCall] = useState<{ name: string; args: { name: string; value: string }[] } | null>(null)
   const signature = useMemo(() => {
     if (extrinsicData?.v) {
       return '0x' + extrinsicData?.r.substring(2) + extrinsicData?.s.substring(2) + toHex(extrinsicData?.v).substring(2)
     }
     return ''
   }, [extrinsicData])
+
+  useEffect(() => {
+    let mounted = true
+    if (!agentKeysContract || !extrinsicData?.input_data) {
+      setDecodedAgentKeysCall(null)
+      return
+    }
+    findAgentKeysWriteFunction(extrinsicData.input_data).then((decoded) => {
+      if (mounted) setDecodedAgentKeysCall(decoded)
+    })
+    return () => {
+      mounted = false
+    }
+  }, [agentKeysContract, extrinsicData?.input_data])
 
   return (
     <PageContent>
@@ -107,6 +131,26 @@ export default function Page() {
                       </div>
                     </div>
                     <Divider className="my-2.5" />
+                    {decodedAgentKeysCall && (
+                      <>
+                        <div className="flex items-start">
+                          <div className="w-48 shrink-0">Decoded Function Call</div>
+                          <div className="min-w-0 flex-1">
+                            <div className="font-semibold">
+                              {agentKeysContract?.name}.{decodedAgentKeysCall.name}(...)
+                            </div>
+                            <div className="mt-2 flex flex-col gap-1">
+                              {decodedAgentKeysCall.args.map((arg) => (
+                                <div key={arg.name} className="break-all">
+                                  <span className="font-semibold">{arg.name}</span>: <span className="font-mono text-xs">{arg.value}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                        <Divider className="my-2.5" />
+                      </>
+                    )}
                     <div className="flex items-center">
                       <div className="w-48">Txn Fee</div>
                       <div>

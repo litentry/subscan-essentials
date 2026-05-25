@@ -178,7 +178,7 @@ func agentKeysSearchHandle(w http.ResponseWriter, r *http.Request) error {
 	if tx := srv.GetTransactionByHash(r.Context(), query); agentKeysTransactionTargetsKnownContract(tx) {
 		toJson(w, 0, map[string]string{
 			"type":  "evm_transaction",
-			"route": "/evm/transaction/" + strings.ToLower(query),
+			"route": "/tx/" + strings.ToLower(query),
 			"hash":  strings.ToLower(query),
 		}, nil)
 		return nil

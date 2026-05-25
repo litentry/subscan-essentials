@@ -3,15 +3,15 @@ import '@/styles/globals.css'
 import BigNumber from 'bignumber.js'
 import type { NextPage } from 'next'
 import type { AppProps } from 'next/app'
+import dynamic from 'next/dynamic'
 import { ReactElement } from 'react'
 import { SWRConfig } from 'swr'
 
 import { HydrationProvider } from '@/components/HydrationProvider'
 
-import { Navbar } from '@/components/navbar'
 import RootLayout from '@/pages/layout'
-import { Footer } from '@/components/Footer'
 
+const Navbar = dynamic(() => import('@/components/navbar').then((mod) => mod.Navbar), { ssr: false })
 
 // This config is required for number formatting
 // https://mikemcl.github.io/bignumber.js/#toS
@@ -37,15 +37,15 @@ type AppPropsWithLayout = AppProps & {
 
 const MyApp: React.FC<AppPropsWithLayout> = ({ Component, pageProps }) => {
   return (
-      <HydrationProvider>
-        <SWRConfig value={SWRDefaultConfig}>
-          <RootLayout pageProps={pageProps}>
-            <Navbar value={''}></Navbar>
-            <Component {...pageProps} />
-            {/* <Footer /> */}
-          </RootLayout>
-        </SWRConfig>
-      </HydrationProvider>
+    <HydrationProvider>
+      <SWRConfig value={SWRDefaultConfig}>
+        <RootLayout pageProps={pageProps}>
+          <Navbar value={''}></Navbar>
+          <Component {...pageProps} />
+          {/* <Footer /> */}
+        </RootLayout>
+      </SWRConfig>
+    </HydrationProvider>
   )
 }
 

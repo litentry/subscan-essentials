@@ -664,6 +664,105 @@ export const usePVMContracts = (host: string, data: getPVMContractListParams) =>
     return useSWR<APIWrapperProps<pvmContractListType>, Error>([host, '/api/plugin/evm/contracts', data], runtimeFetcher);
 };
 
+export type agentKeysContractType = {
+    name: string
+    address: string
+    chain_id: number
+    bytecode_size: number
+    deploy_date: string
+    compiler: string
+    evm_version: string
+    read_functions: string[]
+    write_functions: string[]
+}
+
+export type agentKeysEventType = {
+    contract_name: string
+    address: string
+    name: string
+    signature: string
+    topic0: string
+}
+
+export type agentKeysContractInfoType = {
+    contract: agentKeysContractType
+    events: agentKeysEventType[]
+    indexed_record: pvmContractInfoType | null
+}
+
+export type agentKeysEventLogType = {
+    address: string
+    topics: string[]
+    data: string
+    blockNumber: string
+    blockHash: string
+    timestamp: string
+    gasPrice: string
+    gasUsed: string
+    logIndex: string
+    transactionHash: string
+    transactionIndex: string
+    contract_name: string
+    event_name: string
+    event_signature: string
+    topic0: string
+    decoded?: Record<string, unknown>
+    source: string
+}
+
+export type agentKeysEventsType = {
+    list: agentKeysEventLogType[] | null
+    events: agentKeysEventType[]
+}
+
+export type agentKeysActorType = {
+    actor_omni: string
+    devices_registered: number
+    scope_grants: number
+    audit_entries: number
+    current_k3_epoch: number
+    devices: agentKeysEventLogType[]
+    scopes: agentKeysEventLogType[]
+    audits: agentKeysEventLogType[]
+    k3_rotations: agentKeysEventLogType[]
+    contracts: agentKeysContractType[]
+    event_keywords: agentKeysEventType[]
+}
+
+export type agentKeysSearchType = {
+    type: string
+    route: string
+    address?: string
+    name?: string
+    event?: string
+    signature?: string
+    topic0?: string
+    hash?: string
+    actor_omni?: string
+}
+
+export const useAgentKeysContract = (host: string, data: { address?: string } | null) => {
+    return useSWR<APIWrapperProps<agentKeysContractInfoType>, Error>(
+        data?.address ? [host, '/api/plugin/evm/agentkeys/contract', data] : null,
+        runtimeFetcher
+    );
+};
+
+export const useAgentKeysEvents = (
+    host: string,
+    data: { address?: string; keyword?: string; topic0?: string; actor_omni?: string; row?: number } | null
+) => {
+    return useSWR<APIWrapperProps<agentKeysEventsType>, Error>(data ? [host, '/api/plugin/evm/agentkeys/events', data] : null, runtimeFetcher);
+};
+
+export const useAgentKeysActor = (host: string, data: { actor_omni?: string } | null) => {
+    return useSWR<APIWrapperProps<agentKeysActorType>, Error>(data?.actor_omni ? [host, '/api/plugin/evm/agentkeys/actor', data] : null, runtimeFetcher);
+};
+
+export const searchAgentKeys = (host: string, query: string): Promise<APIWrapperProps<agentKeysSearchType>> => {
+    return runtimeFetcher([host, '/api/plugin/evm/agentkeys/search', { query }]);
+};
+
 export type pvmSolcListType = string[]
 
 export type getPVMSolcListParams = {

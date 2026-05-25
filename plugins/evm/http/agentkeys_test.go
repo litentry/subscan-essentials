@@ -51,7 +51,7 @@ func TestAgentKeysSearchHandle(t *testing.T) {
 		{
 			name: "indexed agentkeys tx routes to evm transaction",
 			body: `{"query":"` + liveDeviceRegisteredTx + `"}`,
-			want: `"type":"evm_transaction"`,
+			want: `"route":"/tx/` + liveDeviceRegisteredTx + `"`,
 		},
 		{
 			name: "actor filter routes to actor view",

@@ -19,6 +19,7 @@ import {
   Divider,
 } from '@heroui/react'
 import { useData } from '@/context'
+import { searchAgentKeys, unwrap, agentKeysSearchType } from '@/utils/api'
 import Image from 'next/image'
 import _ from 'lodash'
 import { env } from 'next-runtime-env'
@@ -60,6 +61,7 @@ const Component: React.FC<Props> = ({ children, className }) => {
   const { metadata, token } = useData()
   const [value, setValue] = useState('')
   const [type, setType] = useState<string[]>(['sub_block'])
+  const [agentKeysSuggestion, setAgentKeysSuggestion] = useState<agentKeysSearchType | null>(null)
   const router = useRouter()
 
   const showSubstrate = metadata?.enable_substrate
@@ -131,35 +133,47 @@ const Component: React.FC<Props> = ({ children, className }) => {
 
   const handleSearch = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      handleRedirect()
+      void handleRedirect()
     }
   }
-  const handleRedirect = () => {
-    if (value.trim()) {
+  const handleRedirect = async () => {
+    const query = value.trim()
+    if (query) {
+      try {
+        const agentKeysMatch = unwrap(await searchAgentKeys(env('NEXT_PUBLIC_API_HOST') || '', query))
+        if (agentKeysMatch?.route) {
+          router.push(agentKeysMatch.route)
+          setValue('')
+          setAgentKeysSuggestion(null)
+          return
+        }
+      } catch {
+        // Fall back to the selected generic route when the AgentKeys search API is unavailable.
+      }
       switch (type[0]) {
         case 'sub_block':
-          router.push(`/sub/block/${value.trim()}`)
+          router.push(`/sub/block/${query}`)
           break
         case 'sub_extrinsic':
-          router.push(`/sub/extrinsic/${value.trim()}`)
+          router.push(`/sub/extrinsic/${query}`)
           break
         case 'sub_event':
-          router.push(`/sub/event/${value.trim()}`)
+          router.push(`/sub/event/${query}`)
           break
         case 'sub_account':
-          router.push(`/sub/account/${value.trim()}`)
+          router.push(`/sub/account/${query}`)
           break
         case 'pvm_block':
-          router.push(`/block/${value.trim()}`)
+          router.push(`/block/${query}`)
           break
         case 'pvm_tx':
-          router.push(`/tx/${value.trim()}`)
+          router.push(`/tx/${query}`)
           break
         case 'pvm_contract':
-          router.push(`/contract/${value.trim()}`)
+          router.push(`/contract/${query}`)
           break
         case 'pvm_account':
-          router.push(`/address/${value.trim()}`)
+          router.push(`/address/${query}`)
           break
         default:
           break
@@ -167,6 +181,22 @@ const Component: React.FC<Props> = ({ children, className }) => {
       setValue('')
     }
   }
+  useEffect(() => {
+    const query = value.trim()
+    if (query.length < 3) {
+      setAgentKeysSuggestion(null)
+      return
+    }
+    const timer = window.setTimeout(async () => {
+      try {
+        const suggestion = unwrap(await searchAgentKeys(env('NEXT_PUBLIC_API_HOST') || '', query))
+        setAgentKeysSuggestion(suggestion?.route ? suggestion : null)
+      } catch {
+        setAgentKeysSuggestion(null)
+      }
+    }, 250)
+    return () => window.clearTimeout(timer)
+  }, [value])
   useEffect(() => {
     if (metadata?.enable_evm && !metadata?.enable_substrate) {
       setType(['pvm_block'])
@@ -199,7 +229,9 @@ const Component: React.FC<Props> = ({ children, className }) => {
           <Link href="/" className="text-inherit">
             <div className="flex items-center gap-2 text-white">
               <span className="text-xl font-semibold tracking-normal">{explorerName}</span>
-              <span className="hidden rounded-md border border-white/15 bg-white/10 px-2 py-0.5 text-xs font-medium text-[#AEFEC3] sm:inline">Powered by Subscan Essentials</span>
+              <span className="hidden rounded-md border border-white/15 bg-white/10 px-2 py-0.5 text-xs font-medium text-[#AEFEC3] sm:inline">
+                Powered by Subscan Essentials
+              </span>
             </div>
           </Link>
         </NavbarBrand>
@@ -388,14 +420,7 @@ const Component: React.FC<Props> = ({ children, className }) => {
           )}
           <NavbarItem>
             <div className="rounded-lg border border-white/10 bg-white/10 px-2.5 py-0.5">
-              <Image
-                width={0}
-                height={0}
-                sizes="100vw"
-                className="hidden md:block h-[30px] w-auto"
-                src={networkLogoSrc}
-                alt={networkNode}
-              />
+              <Image width={0} height={0} sizes="100vw" className="hidden md:block h-[30px] w-auto" src={networkLogoSrc} alt={networkNode} />
             </div>
           </NavbarItem>
         </NavbarContent>
@@ -455,8 +480,23 @@ const Component: React.FC<Props> = ({ children, className }) => {
                 <Divider orientation="vertical" className="mx-4" />
               </div>
             }
-            endContent={<SearchIcon fill="none" size={24} onClick={handleRedirect} className="mr-3 cursor-pointer" />}
+            endContent={<SearchIcon fill="none" size={24} onClick={() => void handleRedirect()} className="mr-3 cursor-pointer" />}
           />
+          {agentKeysSuggestion && (
+            <button
+              type="button"
+              className="mx-auto mt-2 flex w-full max-w-2xl items-center justify-between rounded-md border border-white/15 bg-[#121415] px-3 py-2 text-left text-sm text-white shadow-[0_12px_36px_rgba(0,0,0,0.22)]"
+              onClick={() => {
+                router.push(agentKeysSuggestion.route)
+                setValue('')
+                setAgentKeysSuggestion(null)
+              }}>
+              <span className="truncate">
+                {agentKeysSuggestion.event || agentKeysSuggestion.name || agentKeysSuggestion.actor_omni || agentKeysSuggestion.hash}
+              </span>
+              <span className="ml-3 shrink-0 text-xs text-[#9CF982]">AgentKeys result</span>
+            </button>
+          )}
         </div>
       </div>
     </div>

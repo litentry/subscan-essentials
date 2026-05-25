@@ -1,8 +1,8 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { CardBody, Card, Tabs, Tab, Divider } from '@heroui/react'
-import { useRouter } from 'next/router'
+import { useRouter } from 'next/compat/router'
 import { getBalanceAmount, getThemeColor } from '@/utils/text'
-import { unwrap, usePVMAccounts, usePVMContract } from '@/utils/api'
+import { unwrap, useAgentKeysContract, usePVMAccounts, usePVMContract } from '@/utils/api'
 import { useData } from '@/context'
 import { TxTable } from '@/components/tx'
 import { Container, PageContent } from '@/ui'
@@ -12,18 +12,24 @@ import { Link } from '@/components/link'
 import { ContractInfo, ContractVerify } from '@/components/contract'
 import { env } from 'next-runtime-env'
 import { LoadingSpinner, LoadingText } from '@/components/loading'
+import { AgentKeysOverview } from '@/components/agentkeys'
+import { routeSegment } from '@/utils/agentkeys'
 
 export default function Page() {
   const router = useRouter()
   const { metadata, token } = useData()
-  const id = router.query.id as string
+  const [id, setId] = useState<string | undefined>()
+  useEffect(() => {
+    setId((router?.query.id as string | undefined) || routeSegment(router?.asPath))
+  }, [router?.asPath, router?.query.id])
   const NEXT_PUBLIC_API_HOST = env('NEXT_PUBLIC_API_HOST') || ''
+  const { data: agentKeysData, isLoading: isAgentKeysLoading } = useAgentKeysContract(NEXT_PUBLIC_API_HOST, id ? { address: id } : null)
   const { data } = usePVMContract(NEXT_PUBLIC_API_HOST, {
-    address: id,
+    address: id || '',
   })
 
   const { data: accountsData, isLoading } = usePVMAccounts(NEXT_PUBLIC_API_HOST, {
-    address: id,
+    address: id || '',
     row: 10,
     page: 0,
   })
@@ -31,12 +37,17 @@ export default function Page() {
   const accountListData = unwrap(accountsData)
   const accountData = accountListData?.list?.[0]
   const contractData = unwrap(data)
+  const agentKeysContractData = unwrap(agentKeysData)
 
   return (
     <PageContent>
       <Container>
         <div className="flex flex-col gap-4">
-          {isLoading ? (
+          {!agentKeysData && isAgentKeysLoading ? (
+            <LoadingSpinner />
+          ) : agentKeysContractData ? (
+            <AgentKeysOverview address={id || ''} data={agentKeysContractData} />
+          ) : isLoading ? (
             <LoadingSpinner />
           ) : (
             contractData && (
@@ -82,26 +93,26 @@ export default function Page() {
                         {contractData.verify_status === 'verified' ? (
                           <ContractInfo contract={contractData}></ContractInfo>
                         ) : (
-                          <ContractVerify address={id} />
+                          <ContractVerify address={id || ''} />
                         )}
                       </Tab>
                       <Tab key="transactions" title="Transactions">
                         <TxTable
                           args={{
-                            address: id,
+                            address: id || '',
                           }}></TxTable>
                       </Tab>
                       <Tab key="erc20" title="ERC-20 Transfers">
                         <TokenTransferTable
                           args={{
-                            address: id,
+                            address: id || '',
                             category: 'erc20',
                           }}></TokenTransferTable>
                       </Tab>
                       <Tab key="erc721" title="ERC-721 Transfers">
                         <TokenTransferTable
                           args={{
-                            address: id,
+                            address: id || '',
                             category: 'erc721',
                           }}></TokenTransferTable>
                       </Tab>
@@ -111,7 +122,7 @@ export default function Page() {
               </>
             )
           )}
-          {!isLoading && !contractData && <LoadingText />}
+          {!agentKeysContractData && !isLoading && !contractData && <LoadingText />}
         </div>
       </Container>
     </PageContent>

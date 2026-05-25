@@ -11,6 +11,7 @@ import { BIG_ZERO } from '@/utils/const'
 import { Container, PageContent } from '@/ui'
 import { env } from 'next-runtime-env'
 import { LoadingSpinner, LoadingText } from '@/components/loading'
+import { Link } from '@/components/link'
 
 export default function Page() {
   const router = useRouter()
@@ -54,6 +55,28 @@ export default function Page() {
                 </div>
                 <Card>
                   <CardBody>
+                    {accountData.account_type && (
+                      <>
+                        <div className="flex items-center">
+                          <div className="w-48">Account Type</div>
+                          <div>{accountData.account_type}</div>
+                        </div>
+                        <Divider className="my-2.5" />
+                      </>
+                    )}
+                    {accountData.multisig_composer && (
+                      <>
+                        <div className="flex items-center">
+                          <div className="w-48">Multisig Composer</div>
+                          <div className="break-all">
+                            <Link color={getThemeColor(true)} href={`/sub/account/${accountData.multisig_composer}`}>
+                              {accountData.multisig_composer}
+                            </Link>
+                          </div>
+                        </div>
+                        <Divider className="my-2.5" />
+                      </>
+                    )}
                     <div className="flex items-center">
                       <div className="w-48">Total Balance</div>
                       <div>{getBalanceAmount(new BigNumber(accountData.balance), token?.decimals).toFormat()}</div>

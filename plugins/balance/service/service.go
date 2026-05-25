@@ -33,13 +33,18 @@ func (s *Service) GetAccountListCursor(_ context.Context, limit int, before, aft
 	}
 }
 
-func (s *Service) GetAccountJson(ctx context.Context, addr string) *model.Account {
+func (s *Service) GetAccountJson(ctx context.Context, addr string) *model.AccountJson {
 	account := dao.GetAccountByAddress(ctx, s.d, addr)
 	if account == nil {
 		return nil
 	}
 	account.Address = address.Encode(account.Address)
-	return account
+	accountType, composer := dao.GetMultisigAccountInfo(ctx, s.d, addr)
+	return &model.AccountJson{
+		Account:          *account,
+		AccountType:      accountType,
+		MultisigComposer: composer,
+	}
 }
 
 func (s *Service) GetTransferCursor(ctx context.Context, addr string, blockNum uint, limit int, before, after *uint) ([]model.Transfer, map[string]interface{}) {

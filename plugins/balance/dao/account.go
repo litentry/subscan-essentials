@@ -5,10 +5,12 @@ import (
 	"github.com/itering/subscan-plugin/storage"
 	"github.com/itering/subscan/model"
 	bModel "github.com/itering/subscan/plugins/balance/model"
+	"github.com/itering/subscan/util"
 	"github.com/itering/subscan/util/address"
 	"github.com/itering/substrate-api-rpc/rpc"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+	"strings"
 )
 
 func GetAccountListCursor(db storage.DB, limit int, before, after *uint) ([]bModel.Account, bool, bool) {
@@ -56,6 +58,60 @@ func GetAccountByAddress(ctx context.Context, db storage.DB, address string) *bM
 	}
 	return &account
 
+}
+
+func GetMultisigAccountInfo(ctx context.Context, db storage.DB, accountID string) (string, string) {
+	if accountID == "" {
+		return "", ""
+	}
+	d := db.GetDbInstance().(*gorm.DB)
+	currentBlock, err := db.GetCurrentBlockNum(ctx)
+	if err != nil {
+		return "", ""
+	}
+	accountID = strings.TrimPrefix(strings.ToLower(accountID), "0x")
+	maxTableIndex := int(currentBlock / uint64(model.SplitTableBlockNum))
+	for index := maxTableIndex; index >= 0; index-- {
+		var events []model.ChainEvent
+		table := model.TableNameFromInterface(&model.ChainEvent{BlockNum: uint(index) * model.SplitTableBlockNum}, d)
+		q := d.WithContext(ctx).
+			Table(table).
+			Where("module_id = ?", "multisig").
+			Where("event_id = ?", "NewMultisig").
+			Order("id desc").
+			Limit(200).
+			Find(&events)
+		if q.Error != nil {
+			continue
+		}
+		for _, event := range events {
+			if composer, ok := multisigComposerFromEvent(event, accountID); ok {
+				return "Multisig", composer
+			}
+		}
+	}
+	return "", ""
+}
+
+func multisigComposerFromEvent(event model.ChainEvent, accountID string) (string, bool) {
+	var composer string
+	var matched bool
+	for _, param := range event.Params {
+		value := strings.TrimPrefix(strings.ToLower(util.ToString(param.Value)), "0x")
+		switch strings.ToLower(param.Name) {
+		case "approving":
+			composer = value
+		case "multisig":
+			matched = value == accountID
+		}
+	}
+	if !matched {
+		return "", false
+	}
+	if composer == "" {
+		return "", true
+	}
+	return address.Encode(composer), true
 }
 
 func RefreshAccount(ctx context.Context, s *Storage, accountId string) error {

@@ -12,6 +12,12 @@ type Account struct {
 	Vested   decimal.Decimal `json:"vested" gorm:"type:decimal(65,0);"`
 }
 
+type AccountJson struct {
+	Account
+	AccountType      string `json:"account_type,omitempty"`
+	MultisigComposer string `json:"multisig_composer,omitempty"`
+}
+
 func (a *Account) TableName() string {
 	return "balance_accounts"
 }

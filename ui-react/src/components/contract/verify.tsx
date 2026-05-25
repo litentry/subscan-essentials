@@ -1,16 +1,7 @@
 import React, { useMemo, useState } from 'react'
 
 import { BareProps } from '@/types/page'
-import {
-  Button,
-  RadioGroup,
-  Radio,
-  Input,
-  Select,
-  SelectItem,
-  Textarea,
-  addToast,
-} from '@heroui/react'
+import { Button, RadioGroup, Radio, Input, Select, SelectItem, Textarea, addToast } from '@heroui/react'
 import { unwrap, usePVMResolcs, usePVMSolcs } from '@/utils/api'
 import { getThemeColor, parseFileText } from '@/utils/text'
 import { FileUpload } from '../file'
@@ -99,19 +90,19 @@ const Component: React.FC<Props> = ({ children, className, address }) => {
     if (compilerType === 'json') {
       if (!files) {
         addToast({
-            title: 'Warning',
-            description: 'Please upload the Standard-Input-JSON file.',
-            color: 'warning',
-          });
+          title: 'Warning',
+          description: 'Please upload the Standard-Input-JSON file.',
+          color: 'warning',
+        })
         return
       }
     } else if (compilerType === 'single') {
       if (!code) {
         addToast({
-            title: 'Warning',
-            description: 'Please enter the Solidity contract code.',
-            color: 'warning',
-          });
+          title: 'Warning',
+          description: 'Please enter the Solidity contract code.',
+          color: 'warning',
+        })
         return
       }
     }
@@ -172,7 +163,7 @@ const Component: React.FC<Props> = ({ children, className, address }) => {
             title: 'Error',
             description: res.data.result || res.data.message,
             color: 'secondary',
-          });
+          })
         } else {
           window.location.reload()
         }
@@ -180,19 +171,19 @@ const Component: React.FC<Props> = ({ children, className, address }) => {
       })
       .catch((err) => {
         addToast({
-            title: 'Error',
-            description: err.response?.data?.result || err.message,
-            color: 'secondary',
-          });
+          title: 'Error',
+          description: err.response?.data?.result || err.message,
+          color: 'secondary',
+        })
         setIsLoading(false)
       })
   }
-  
+
   return (
-    <div className="space-y-5 relative">
-      <div className='absolute right-2 z-10'>
+    <div className="contract-verify-form space-y-5 relative">
+      <div className="absolute right-2 z-10">
         <Link target="_blank" href="https://github.com/subscan-explorer/subscan-essentials/blob/master/docs/pvm_contract_verify.md">
-          <Button>Verify Guide</Button>
+          <Button className="verify-guide-button">Verify Guide</Button>
         </Link>
       </div>
       <div>
@@ -307,12 +298,7 @@ const Component: React.FC<Props> = ({ children, className, address }) => {
       {compilerType === 'single' && (
         <div>
           <div className="mb-2">Enter the Solidity Contract Code</div>
-          <Textarea
-            value={code}
-            onValueChange={setCode}
-            minRows={10}
-            placeholder=""
-          />
+          <Textarea value={code} onValueChange={setCode} minRows={10} placeholder="" />
         </div>
       )}
       {compilerType === 'single' && (
@@ -329,8 +315,12 @@ const Component: React.FC<Props> = ({ children, className, address }) => {
         </div>
       )}
       <div className="flex gap-4">
-        <Button isLoading={isLoading} color={getThemeColor()} onPress={submitForm}>Verify & Publish</Button>
-        <Button onPress={reset}>Reset</Button>
+        <Button isLoading={isLoading} color={getThemeColor()} onPress={submitForm}>
+          Verify & Publish
+        </Button>
+        <Button className="form-secondary-button" onPress={reset}>
+          Reset
+        </Button>
       </div>
     </div>
   )

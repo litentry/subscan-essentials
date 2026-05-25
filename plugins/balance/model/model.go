@@ -64,8 +64,8 @@ func AccountLockSummary(accountData *AccountData, locks []BalanceLock) LockSumma
 
 type VestingInfo struct {
 	Locked        decimal.Decimal `json:"locked"`
-	PerBlock      decimal.Decimal `json:"perBlock"`
-	StartingBlock uint64          `json:"startingBlock"`
+	PerBlock      decimal.Decimal `json:"per_block"`
+	StartingBlock uint64          `json:"starting_block"`
 }
 
 func (v VestingInfo) VestedAt(blockNum uint64) decimal.Decimal {

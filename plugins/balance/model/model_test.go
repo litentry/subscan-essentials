@@ -1,6 +1,7 @@
 package model
 
 import (
+	"encoding/json"
 	"testing"
 
 	"github.com/shopspring/decimal"
@@ -42,6 +43,17 @@ func TestSummarizeVestingCalculatesVestedAmount(t *testing.T) {
 	}, 16)
 
 	assert.Equal(t, "58", summary.String())
+}
+
+func TestVestingInfoDecodesChainStorageFields(t *testing.T) {
+	var schedules []VestingInfo
+	err := json.Unmarshal([]byte(`[{"locked":"24102589000000000000000000","per_block":"5555555555555555000","starting_block":6282695}]`), &schedules)
+
+	assert.NoError(t, err)
+	assert.Len(t, schedules, 1)
+	assert.Equal(t, "24102589000000000000000000", schedules[0].Locked.String())
+	assert.Equal(t, "5555555555555555000", schedules[0].PerBlock.String())
+	assert.Equal(t, uint64(6282695), schedules[0].StartingBlock)
 }
 
 func TestVestingInfoVestedAtCapsAtLocked(t *testing.T) {

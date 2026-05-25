@@ -1,12 +1,6 @@
 package model
 
-import (
-	"strings"
-
-	"github.com/shopspring/decimal"
-)
-
-const VestingLockId = "0x76657374696e6720"
+import "github.com/shopspring/decimal"
 
 type Account struct {
 	ID       uint            `gorm:"primary_key" json:"-"`
@@ -41,7 +35,6 @@ type BalanceLock struct {
 
 type LockSummary struct {
 	Locked decimal.Decimal
-	Vested decimal.Decimal
 }
 
 func (a AccountData) LockedBalance() decimal.Decimal {
@@ -53,9 +46,6 @@ func SummarizeLocks(locks []BalanceLock) LockSummary {
 	for _, lock := range locks {
 		if lock.Amount.GreaterThan(summary.Locked) {
 			summary.Locked = lock.Amount
-		}
-		if strings.EqualFold(lock.ID, VestingLockId) && lock.Amount.GreaterThan(summary.Vested) {
-			summary.Vested = lock.Amount
 		}
 	}
 	return summary
@@ -70,6 +60,31 @@ func AccountLockSummary(accountData *AccountData, locks []BalanceLock) LockSumma
 		summary.Locked = dataLocked
 	}
 	return summary
+}
+
+type VestingInfo struct {
+	Locked        decimal.Decimal `json:"locked"`
+	PerBlock      decimal.Decimal `json:"perBlock"`
+	StartingBlock uint64          `json:"startingBlock"`
+}
+
+func (v VestingInfo) VestedAt(blockNum uint64) decimal.Decimal {
+	if blockNum <= v.StartingBlock {
+		return decimal.Zero
+	}
+	vested := v.PerBlock.Mul(decimal.NewFromUint64(blockNum - v.StartingBlock))
+	if vested.GreaterThan(v.Locked) {
+		return v.Locked
+	}
+	return vested
+}
+
+func SummarizeVesting(vesting []VestingInfo, blockNum uint64) decimal.Decimal {
+	var vested decimal.Decimal
+	for _, schedule := range vesting {
+		vested = vested.Add(schedule.VestedAt(blockNum))
+	}
+	return vested
 }
 
 type Transfer struct {

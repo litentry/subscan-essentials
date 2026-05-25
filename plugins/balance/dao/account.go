@@ -69,10 +69,11 @@ func RefreshAccount(ctx context.Context, s *Storage, accountId string) error {
 	if q.RowsAffected == 1 {
 		_, _ = s.Pool.HINCRBY(ctx, model.MetadataCacheKey(), "total_account", 1)
 	}
-	return AfterAccountCreate(ctx, db, &account)
+	currentBlock, _ := s.Dao.GetCurrentBlockNum(ctx)
+	return AfterAccountCreate(ctx, db, &account, currentBlock)
 }
 
-func AfterAccountCreate(ctx context.Context, db *gorm.DB, account *bModel.Account) error {
+func AfterAccountCreate(ctx context.Context, db *gorm.DB, account *bModel.Account, currentBlock uint64) error {
 	accountDataRaw, err := rpc.ReadStorage(nil, "system", "account", "", account.Address)
 	if err != nil {
 		return err
@@ -80,13 +81,14 @@ func AfterAccountCreate(ctx context.Context, db *gorm.DB, account *bModel.Accoun
 	accountData := new(bModel.AccountData)
 	accountDataRaw.ToAny(accountData)
 	locks := ReadBalanceLocks(account.Address)
+	vesting := ReadVesting(account.Address)
 	lockSummary := bModel.AccountLockSummary(accountData, locks)
 	return db.WithContext(ctx).Model(account).Where("address = ?", account.Address).UpdateColumns(map[string]interface{}{
 		"nonce":    accountData.Nonce,
 		"balance":  accountData.Data.Free.Add(accountData.Data.Reserved),
 		"locked":   lockSummary.Locked,
 		"reserved": accountData.Data.Reserved,
-		"vested":   lockSummary.Vested,
+		"vested":   bModel.SummarizeVesting(vesting, currentBlock),
 	}).Error
 }
 
@@ -98,6 +100,16 @@ func ReadBalanceLocks(accountId string) []bModel.BalanceLock {
 	var locks []bModel.BalanceLock
 	locksRaw.ToAny(&locks)
 	return locks
+}
+
+func ReadVesting(accountId string) []bModel.VestingInfo {
+	vestingRaw, err := rpc.ReadStorage(nil, "vesting", "vesting", "", accountId)
+	if err != nil {
+		return nil
+	}
+	var vesting []bModel.VestingInfo
+	vestingRaw.ToAny(&vesting)
+	return vesting
 }
 
 func (s *Storage) AddOrUpdateItem(c context.Context, item interface{}, keys []string, updates ...string) *gorm.DB {

@@ -37,7 +37,7 @@ export default function Page() {
     } else {
       return BIG_ZERO
     }
-  }, [accountData?.reserved, accountData?.locked, accountData?.balance, metadata?.enabledNewTransferableFormulas])
+  }, [accountData, metadata?.enabledNewTransferableFormulas])
 
   return (
     <PageContent>
@@ -67,6 +67,11 @@ export default function Page() {
                     <div className="flex items-center">
                       <div className="w-48">Locked</div>
                       <div>{getBalanceAmount(new BigNumber(accountData.locked), token?.decimals).toFormat()}</div>
+                    </div>
+                    <Divider className="my-2.5" />
+                    <div className="flex items-center">
+                      <div className="w-48">Vested</div>
+                      <div>{getBalanceAmount(new BigNumber(accountData.vested || 0), token?.decimals).toFormat()}</div>
                     </div>
                     <Divider className="my-2.5" />
                     <div className="flex items-center">

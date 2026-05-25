@@ -1,8 +1,12 @@
 package model
 
 import (
+	"strings"
+
 	"github.com/shopspring/decimal"
 )
+
+const VestingLockId = "0x76657374696e6720"
 
 type Account struct {
 	ID       uint            `gorm:"primary_key" json:"-"`
@@ -11,6 +15,7 @@ type Account struct {
 	Balance  decimal.Decimal `json:"balance" gorm:"type:decimal(65,0);index:balance;index:balance_address,priority:1"`
 	Locked   decimal.Decimal `json:"locked" gorm:"type:decimal(65,0);"`
 	Reserved decimal.Decimal `json:"reserved" gorm:"type:decimal(65,0);"`
+	Vested   decimal.Decimal `json:"vested" gorm:"type:decimal(65,0);"`
 }
 
 func (a *Account) TableName() string {
@@ -25,7 +30,46 @@ type AccountData struct {
 		Reserved   decimal.Decimal `json:"reserved"`
 		MiscFrozen decimal.Decimal `json:"miscFrozen"`
 		FeeFrozen  decimal.Decimal `json:"feeFrozen"`
+		Frozen     decimal.Decimal `json:"frozen"`
 	} `json:"data"`
+}
+
+type BalanceLock struct {
+	ID     string          `json:"id"`
+	Amount decimal.Decimal `json:"amount"`
+}
+
+type LockSummary struct {
+	Locked decimal.Decimal
+	Vested decimal.Decimal
+}
+
+func (a AccountData) LockedBalance() decimal.Decimal {
+	return decimal.Max(a.Data.Frozen, decimal.Max(a.Data.MiscFrozen, a.Data.FeeFrozen))
+}
+
+func SummarizeLocks(locks []BalanceLock) LockSummary {
+	var summary LockSummary
+	for _, lock := range locks {
+		if lock.Amount.GreaterThan(summary.Locked) {
+			summary.Locked = lock.Amount
+		}
+		if strings.EqualFold(lock.ID, VestingLockId) && lock.Amount.GreaterThan(summary.Vested) {
+			summary.Vested = lock.Amount
+		}
+	}
+	return summary
+}
+
+func AccountLockSummary(accountData *AccountData, locks []BalanceLock) LockSummary {
+	summary := SummarizeLocks(locks)
+	if accountData == nil {
+		return summary
+	}
+	if dataLocked := accountData.LockedBalance(); dataLocked.GreaterThan(summary.Locked) {
+		summary.Locked = dataLocked
+	}
+	return summary
 }
 
 type Transfer struct {

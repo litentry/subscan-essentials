@@ -256,6 +256,7 @@ export type accountType = {
     locked: string
     nonce: string
     reserved: string
+    vested?: string
 }
 
 type getAccountParams = {

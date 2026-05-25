@@ -7,7 +7,6 @@ import (
 	bModel "github.com/itering/subscan/plugins/balance/model"
 	"github.com/itering/subscan/util/address"
 	"github.com/itering/substrate-api-rpc/rpc"
-	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -80,12 +79,25 @@ func AfterAccountCreate(ctx context.Context, db *gorm.DB, account *bModel.Accoun
 	}
 	accountData := new(bModel.AccountData)
 	accountDataRaw.ToAny(accountData)
+	locks := ReadBalanceLocks(account.Address)
+	lockSummary := bModel.AccountLockSummary(accountData, locks)
 	return db.WithContext(ctx).Model(account).Where("address = ?", account.Address).UpdateColumns(map[string]interface{}{
 		"nonce":    accountData.Nonce,
 		"balance":  accountData.Data.Free.Add(accountData.Data.Reserved),
-		"locked":   decimal.Max(accountData.Data.MiscFrozen, accountData.Data.FeeFrozen),
+		"locked":   lockSummary.Locked,
 		"reserved": accountData.Data.Reserved,
+		"vested":   lockSummary.Vested,
 	}).Error
+}
+
+func ReadBalanceLocks(accountId string) []bModel.BalanceLock {
+	locksRaw, err := rpc.ReadStorage(nil, "balances", "locks", "", accountId)
+	if err != nil {
+		return nil
+	}
+	var locks []bModel.BalanceLock
+	locksRaw.ToAny(&locks)
+	return locks
 }
 
 func (s *Storage) AddOrUpdateItem(c context.Context, item interface{}, keys []string, updates ...string) *gorm.DB {

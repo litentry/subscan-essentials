@@ -9,7 +9,6 @@ import (
 	"github.com/itering/subscan/util"
 	"github.com/itering/subscan/util/address"
 	"github.com/panjf2000/ants/v2"
-	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 	"log"
 	"sync"
@@ -17,6 +16,7 @@ import (
 
 func InitAccount(sg *Storage) {
 	ctx := context.Background()
+	locksByAddress := readAllBalanceLocks(ctx)
 	wg := new(sync.WaitGroup)
 	bp, _ := ants.NewPoolWithFunc(10, func(i interface{}) {
 		wg.Add(1)
@@ -24,13 +24,15 @@ func InitAccount(sg *Storage) {
 		params := i.([]interface{})
 		addr := params[0].(string)
 		info := params[1].(*bModel.AccountData)
+		lockSummary := bModel.AccountLockSummary(info, locksByAddress[addr])
 		sg.AddOrUpdateItem(ctx, &bModel.Account{
 			Address:  addr,
 			Nonce:    info.Nonce,
 			Balance:  info.Data.Free.Add(info.Data.Reserved),
-			Locked:   decimal.Max(info.Data.MiscFrozen, info.Data.FeeFrozen),
+			Locked:   lockSummary.Locked,
 			Reserved: info.Data.Reserved,
-		}, []string{"address"}, "nonce", "balance", "locked", "reserved")
+			Vested:   lockSummary.Vested,
+		}, []string{"address"}, "nonce", "balance", "locked", "reserved", "vested")
 	})
 	defer bp.Release()
 
@@ -49,6 +51,28 @@ func InitAccount(sg *Storage) {
 		log.Panic(err)
 	}
 	wg.Wait()
+}
+
+func readAllBalanceLocks(ctx context.Context) map[string][]bModel.BalanceLock {
+	result := map[string][]bModel.BalanceLock{}
+	_ = substrate.BatchReadKeysPaged(ctx, "Balances", "Locks", "", func(keys []string, scaleType string) error {
+		r, _ := substrate.BatchStorageByKey(ctx, keys, scaleType, "")
+		for key, v := range r {
+			val, err := substrate.ParseStorageKey(key)
+			if err != nil || len(val) == 0 {
+				continue
+			}
+			addr := address.Format(val[0].ToString())
+			if addr == "" {
+				continue
+			}
+			var locks []bModel.BalanceLock
+			v.ToAny(&locks)
+			result[addr] = locks
+		}
+		return nil
+	})
+	return result
 }
 
 func RefreshAllAccount(_ *Storage) {

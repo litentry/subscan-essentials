@@ -17,6 +17,7 @@ the Subscan team and powering [subscan.io](https://www.subscan.io/), it provides
 ## Table of Contents
 
 - [Features](#features)
+- [Monorepo Layout](#monorepo-layout)
 - [Quick Start](#quick-start)
     - [Prerequisites](#prerequisites)
     - [Installation](#installation)
@@ -43,6 +44,11 @@ the Subscan team and powering [subscan.io](https://www.subscan.io/), it provides
 
 ---
 
+## Monorepo Layout
+
+- Backend service: repository root
+- React UI: `ui-react/`
+
 ## Quick Start
 
 ### Prerequisites
@@ -62,7 +68,7 @@ the Subscan team and powering [subscan.io](https://www.subscan.io/), it provides
 
 ### React UI Configuration
 
-Subscan Essentials supports a React-based UI for a modern frontend experience. The React UI repository is available at [subscan-essentials-ui-react](https://github.com/subscan-explorer/subscan-essentials-ui-react).
+Subscan Essentials supports a React-based UI for a modern frontend experience. The React UI is included in this monorepo under `ui-react/`.
 
 #### Prerequisites
 
@@ -71,11 +77,10 @@ Subscan Essentials supports a React-based UI for a modern frontend experience. T
 
 #### Installation
 
-1. Clone the repository:
+1. Enter the React UI project:
 
 ```bash
-git clone https://github.com/subscan-explorer/subscan-essentials-ui-react.git
-cd subscan-essentials-ui-react
+cd ui-react
 ```
 
 2. Install dependencies:

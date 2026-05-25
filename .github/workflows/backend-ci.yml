@@ -1,0 +1,77 @@
+name: Backend CI
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/backend-ci.yml'
+      - '.golangci.yml'
+      - 'Dockerfile'
+      - 'cmd/**'
+      - 'configs/**'
+      - 'docs/api/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'internal/**'
+      - 'model/**'
+      - 'pkg/**'
+      - 'plugins/**'
+      - 'share/**'
+      - 'util/**'
+  push:
+    branches:
+      - master
+      - crossagent
+    paths:
+      - '.github/workflows/backend-ci.yml'
+      - '.golangci.yml'
+      - 'Dockerfile'
+      - 'cmd/**'
+      - 'configs/**'
+      - 'docs/api/**'
+      - 'go.mod'
+      - 'go.sum'
+      - 'internal/**'
+      - 'model/**'
+      - 'pkg/**'
+      - 'plugins/**'
+      - 'share/**'
+      - 'util/**'
+
+concurrency:
+  group: backend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  go:
+    name: Go build and stable tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build backend
+        run: go build -o /tmp/subscan-ci ./cmd
+
+      - name: Build backend Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: subscan-essentials-ci:${{ github.sha }}
+
+      - name: Run stable backend tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The excluded packages currently require local config/services or have pre-existing test compile/vet issues.
+          go list ./... \
+            | grep -Ev '/(internal/dao|internal/server/http|internal/service|pkg/go-web3/providers/util|plugins/evm/dao|share/redis|util/mq)$' \
+            | xargs go test

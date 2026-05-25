@@ -6,8 +6,15 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/itering/subscan/plugins/evm/agentkeys"
+	"github.com/itering/subscan/plugins/evm/dao"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+)
+
+const (
+	liveDeviceRegisteredTx = "0x8f1d7cca5710c2859b4f8b942c36df41d3c6b8b02a862d1f506285a6176c988b"
+	liveActorOmni          = "0x941cb1c3260518bbf40eac7d02663517fc7cff304d9b03e80d2cc54126c6bef2"
 )
 
 func TestAgentKeysContractsHandle(t *testing.T) {
@@ -42,8 +49,8 @@ func TestAgentKeysSearchHandle(t *testing.T) {
 			want: `"event":"DeviceRegistered"`,
 		},
 		{
-			name: "bootstrap tx routes to evm transaction",
-			body: `{"query":"0x8f1d7cca5710c2859b4f8b942c36df41d3c6b8b02a862d1f506285a6176c988b"}`,
+			name: "indexed agentkeys tx routes to evm transaction",
+			body: `{"query":"` + liveDeviceRegisteredTx + `"}`,
 			want: `"type":"evm_transaction"`,
 		},
 		{
@@ -67,7 +74,7 @@ func TestAgentKeysSearchHandle(t *testing.T) {
 	}
 }
 
-func TestAgentKeysActorHandleBootstrapFallback(t *testing.T) {
+func TestAgentKeysActorHandleUsesIndexedLogsOnly(t *testing.T) {
 	req, err := http.NewRequest(
 		http.MethodPost,
 		"/agentkeys/actor",
@@ -80,9 +87,32 @@ func TestAgentKeysActorHandleBootstrapFallback(t *testing.T) {
 
 	body := rr.Body.String()
 	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Contains(t, body, `"devices_registered":1`)
+	assert.Contains(t, body, `"devices_registered":0`)
 	assert.Contains(t, body, `"scope_grants":0`)
 	assert.Contains(t, body, `"audit_entries":0`)
-	assert.Contains(t, body, `"current_k3_epoch":1`)
-	assert.Contains(t, body, `"event_name":"DeviceRegistered"`)
+	assert.Contains(t, body, `"current_k3_epoch":0`)
+	assert.NotContains(t, body, `"source":"heima_mainnet_bootstrap_receipt"`)
+}
+
+func TestDecorateAgentKeysLogsDecodesIndexedDeviceRegistered(t *testing.T) {
+	device, ok := agentkeys.EventByName("DeviceRegistered")
+	require.True(t, ok)
+
+	logs := decorateAgentKeysLogs([]dao.EtherscanLogsRes{
+		{
+			Address:          device.Address,
+			Topics:           []string{device.Topic0, "0x9b78c2e7380f23fd602a759f1de316f07e7705e5e279e211ef5036d7215a3260", liveActorOmni, liveActorOmni},
+			Data:             "0x",
+			BlockNumber:      "0x92cc43",
+			LogIndex:         "0x1",
+			TransactionHash:  liveDeviceRegisteredTx,
+			TransactionIndex: "0x0",
+		},
+	})
+
+	require.Len(t, logs, 1)
+	assert.Equal(t, "indexed_db", logs[0].Source)
+	assert.Equal(t, "SidecarRegistry", logs[0].ContractName)
+	assert.Equal(t, "DeviceRegistered", logs[0].EventName)
+	assert.Equal(t, liveActorOmni, logs[0].Decoded["actorOmni"])
 }

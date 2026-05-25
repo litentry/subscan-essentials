@@ -119,7 +119,7 @@ func agentKeysActorHandle(w http.ResponseWriter, r *http.Request) error {
 	scopes := agentKeysQueryLogs(r, "", "ScopeUpdated", "", actorOmni, 100)
 	audits := agentKeysQueryLogs(r, "", "AuditAppended", "", actorOmni, 100)
 	k3 := agentKeysQueryLogs(r, "", "K3Rotated", "", "", 1)
-	currentEpoch := agentkeys.CurrentK3Epoch
+	var currentEpoch uint64
 	if len(k3) > 0 && len(k3[0].Topics) > 1 {
 		if epoch := topicUint64(k3[0].Topics[1]); epoch > 0 {
 			currentEpoch = epoch
@@ -175,7 +175,7 @@ func agentKeysSearchHandle(w http.ResponseWriter, r *http.Request) error {
 		}, nil)
 		return nil
 	}
-	if strings.EqualFold(query, agentkeys.BootstrapTx) {
+	if tx := srv.GetTransactionByHash(r.Context(), query); agentKeysTransactionTargetsKnownContract(tx) {
 		toJson(w, 0, map[string]string{
 			"type":  "evm_transaction",
 			"route": "/evm/transaction/" + strings.ToLower(query),
@@ -226,9 +226,6 @@ func agentKeysQueryLogs(r *http.Request, contractAddress, keyword, topic0, actor
 	if len(indexed) > 0 {
 		return indexed
 	}
-	if bootstrapMatches(contractAddress, keyword, topic0, actorOmni) {
-		return []agentKeysEventLog{bootstrapDeviceLog()}
-	}
 	return nil
 }
 
@@ -253,52 +250,6 @@ func decorateAgentKeysLogs(logs []dao.EtherscanLogsRes) []agentKeysEventLog {
 		})
 	}
 	return out
-}
-
-func bootstrapMatches(contractAddress, keyword, topic0, actorOmni string) bool {
-	if contractAddress != "" {
-		c, ok := agentkeys.ContractByAddress(contractAddress)
-		if !ok || c.Name != "SidecarRegistry" {
-			return false
-		}
-	}
-	if keyword != "" && !strings.EqualFold(keyword, "DeviceRegistered") && !strings.EqualFold(keyword, "SidecarRegistry.DeviceRegistered") {
-		return false
-	}
-	if topic0 != "" {
-		ev, _ := agentkeys.EventByName("DeviceRegistered")
-		if !strings.EqualFold(util.AddHex(topic0), ev.Topic0) {
-			return false
-		}
-	}
-	if actorOmni != "" {
-		actorOmni, _ = agentkeys.NormalizeBytes32(actorOmni)
-		if actorOmni != agentkeys.LiveActorOmni {
-			return false
-		}
-	}
-	return true
-}
-
-func bootstrapDeviceLog() agentKeysEventLog {
-	bootstrap := agentkeys.BootstrapDeviceRegistered()
-	return agentKeysEventLog{
-		EtherscanLogsRes: dao.EtherscanLogsRes{
-			Address:          bootstrap.Address,
-			Topics:           bootstrap.Topics,
-			Data:             bootstrap.Data,
-			BlockNumber:      util.IntToHexNumber(bootstrap.BlockNumber),
-			LogIndex:         strconv.FormatUint(bootstrap.LogIndex, 10),
-			TransactionHash:  bootstrap.TransactionHash,
-			TransactionIndex: strconv.FormatUint(bootstrap.TransactionIndex, 10),
-		},
-		ContractName:   bootstrap.ContractName,
-		EventName:      bootstrap.EventName,
-		EventSignature: bootstrap.EventSignature,
-		Topic0:         bootstrap.Topic0,
-		Decoded:        bootstrap.Decoded,
-		Source:         bootstrap.Source,
-	}
 }
 
 func decodeIndexedAgentKeysLog(eventName string, log dao.EtherscanLogsRes) map[string]interface{} {
@@ -348,4 +299,11 @@ func agentKeysIsKnownAddress(q string) bool {
 		_, ok := agentkeys.ContractByAddress(q)
 		return ok
 	}()
+}
+
+func agentKeysTransactionTargetsKnownContract(tx *dao.Transaction) bool {
+	if tx == nil {
+		return false
+	}
+	return agentKeysIsKnownAddress(tx.ToAddress) || agentKeysIsKnownAddress(tx.Contract)
 }

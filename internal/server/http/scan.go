@@ -325,7 +325,7 @@ func checkSearchHashHandle(c *gin.Context) {
 		toJson(c, map[string]string{"hash_type": "extrinsic"}, nil)
 		return
 	}
-	if strings.EqualFold(query, agentkeys.BootstrapTx) || evmDao.GetTransactionByHash(ctx, query) != nil {
+	if evmDao.GetTransactionByHash(ctx, query) != nil {
 		toJson(c, map[string]string{"hash_type": "evm_transaction"}, nil)
 		return
 	}

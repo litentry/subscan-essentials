@@ -37,12 +37,3 @@ func TestEventKeywords(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, EventTopic(audit.Signature), audit.Topic0)
 }
-
-func TestBootstrapDeviceRegistered(t *testing.T) {
-	event := BootstrapDeviceRegistered()
-	assert.Equal(t, BootstrapBlock, event.BlockNumber)
-	assert.Equal(t, BootstrapTx, event.TransactionHash)
-	assert.Equal(t, LiveActorOmni, event.Topics[2])
-	assert.Equal(t, LiveActorOmni, event.Decoded["operatorOmni"])
-	assert.Equal(t, uint64(1), CurrentK3Epoch)
-}

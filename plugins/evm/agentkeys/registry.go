@@ -9,15 +9,11 @@ import (
 )
 
 const (
-	ChainID        = 212013
-	RPCURL         = "https://rpc.heima-parachain.heima.network"
-	DeployDate     = "2026-05-19"
-	Compiler       = "solc 0.8.20"
-	EVMVersion     = "london"
-	BootstrapBlock = uint64(9620483)
-	BootstrapTx    = "0x8f1d7cca5710c2859b4f8b942c36df41d3c6b8b02a862d1f506285a6176c988b"
-	LiveActorOmni  = "0x941cb1c3260518bbf40eac7d02663517fc7cff304d9b03e80d2cc54126c6bef2"
-	CurrentK3Epoch = uint64(1)
+	ChainID    = 212013
+	RPCURL     = "https://rpc.heima-parachain.heima.network"
+	DeployDate = "2026-05-19"
+	Compiler   = "solc 0.8.20"
+	EVMVersion = "london"
 )
 
 type Contract struct {
@@ -38,22 +34,6 @@ type Event struct {
 	Name         string `json:"name"`
 	Signature    string `json:"signature"`
 	Topic0       string `json:"topic0"`
-}
-
-type BootstrapEvent struct {
-	Address          string                 `json:"address"`
-	ContractName     string                 `json:"contract_name"`
-	EventName        string                 `json:"event_name"`
-	EventSignature   string                 `json:"event_signature"`
-	Topic0           string                 `json:"topic0"`
-	Topics           []string               `json:"topics"`
-	Data             string                 `json:"data"`
-	BlockNumber      uint64                 `json:"block_number"`
-	TransactionHash  string                 `json:"transaction_hash"`
-	TransactionIndex uint64                 `json:"transaction_index"`
-	LogIndex         uint64                 `json:"log_index"`
-	Decoded          map[string]interface{} `json:"decoded"`
-	Source           string                 `json:"source"`
 }
 
 var contracts = []Contract{
@@ -230,36 +210,4 @@ func NormalizeBytes32(v string) (string, bool) {
 		}
 	}
 	return v, true
-}
-
-func BootstrapDeviceRegistered() BootstrapEvent {
-	ev, _ := EventByName("DeviceRegistered")
-	deviceKeyHash := "0x9b78c2e7380f23fd602a759f1de316f07e7705e5e279e211ef5036d7215a3260"
-	return BootstrapEvent{
-		Address:        contracts[1].Address,
-		ContractName:   "SidecarRegistry",
-		EventName:      "DeviceRegistered",
-		EventSignature: ev.Signature,
-		Topic0:         ev.Topic0,
-		Topics: []string{
-			ev.Topic0,
-			deviceKeyHash,
-			LiveActorOmni,
-			LiveActorOmni,
-		},
-		Data:             "0x000000000000000000000000000000000000000000000000000000000000000100000000000000000000000000000000000000000000000000000000000000070000000000000000000000000000000000000000000000000000000000000000",
-		BlockNumber:      BootstrapBlock,
-		TransactionHash:  BootstrapTx,
-		TransactionIndex: 0,
-		LogIndex:         1,
-		Decoded: map[string]interface{}{
-			"deviceKeyHash": deviceKeyHash,
-			"operatorOmni":  LiveActorOmni,
-			"actorOmni":     LiveActorOmni,
-			"tier":          1,
-			"roles":         7,
-			"k11CredId":     "0x0000000000000000000000000000000000000000000000000000000000000000",
-		},
-		Source: "heima_mainnet_bootstrap_receipt",
-	}
 }

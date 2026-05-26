@@ -33,9 +33,20 @@ func (a *Balance) Commands() []cli.Command {
 		},
 		{
 			Name: "RefreshAllAccount",
+			Flags: []cli.Flag{
+				cli.IntFlag{Name: "limit", Value: 10, Usage: "max accounts to refresh in this batch"},
+				cli.UintFlag{Name: "start-id", Usage: "refresh accounts with id greater than this value"},
+				cli.IntFlag{Name: "sleep-seconds", Value: 3, Usage: "seconds to sleep after each account refresh"},
+				cli.StringFlag{Name: "mode", Value: "resume", Usage: "progress mode: resume or reset"},
+			},
 			Action: func(c *cli.Context) error {
-				dao.RefreshAllAccount(a.storage())
-				return nil
+				return dao.RefreshAllAccount(a.storage(), dao.RefreshAllAccountOptions{
+					Limit:        c.Int("limit"),
+					StartID:      c.Uint("start-id"),
+					SleepSeconds: c.Int("sleep-seconds"),
+					Mode:         c.String("mode"),
+					StartIDSet:   c.IsSet("start-id"),
+				})
 			},
 		},
 		{

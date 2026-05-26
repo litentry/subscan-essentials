@@ -2,7 +2,7 @@ import React, { useMemo } from 'react'
 
 import { BareProps } from '@/types/page'
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, getKeyValue, Spinner } from '@heroui/react'
-import { formatHash, getBalanceAmount, getThemeColor, timeAgo } from '@/utils/text'
+import { formatBalanceAmount, formatHash, getThemeColor, timeAgo } from '@/utils/text'
 import { getTransferListParams, unwrap, useTransfers } from '@/utils/api'
 import { PAGE_SIZE } from '@/utils/const'
 import { useData } from '@/context'
@@ -81,7 +81,7 @@ const Component: React.FC<Props> = ({ children, className, args }) => {
               } else if (columnKey === 'block_timestamp') {
                 return <TableCell>{timeAgo(item.block_timestamp)}</TableCell>
               } else if (columnKey === 'amount') {
-                return <TableCell>{getBalanceAmount(new BigNumber(item.amount), token?.decimals).toFormat()}</TableCell>
+                return <TableCell>{formatBalanceAmount(new BigNumber(item.amount), token?.decimals)}</TableCell>
               }
               if (columnKey === 'sender' || columnKey === 'receiver') {
                 const address = columnKey === 'sender' ? item.sender : item.receiver

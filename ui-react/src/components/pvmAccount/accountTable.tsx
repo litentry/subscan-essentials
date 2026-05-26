@@ -2,7 +2,7 @@ import React, { useMemo } from 'react'
 
 import { BareProps } from '@/types/page'
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, getKeyValue, Spinner } from '@heroui/react'
-import { getBalanceAmount, getThemeColor } from '@/utils/text'
+import { formatBalanceAmount, getThemeColor } from '@/utils/text'
 import { getExtrinsicListParams, unwrap, usePVMAccounts } from '@/utils/api'
 import { PAGE_SIZE } from '@/utils/const'
 import { useData } from '@/context'
@@ -66,7 +66,7 @@ const Component: React.FC<Props> = ({ children, className, args }) => {
           <TableRow key={item.evm_account}>
             {(columnKey) => {
               if (columnKey === 'balance') {
-                return <TableCell>{getBalanceAmount(new BigNumber(item.balance), token?.decimals).toFormat()}</TableCell>
+                return <TableCell>{formatBalanceAmount(new BigNumber(item.balance), token?.decimals)}</TableCell>
               } else if (columnKey === 'address') {
                 return (
                   <TableCell>

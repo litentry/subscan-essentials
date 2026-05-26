@@ -2,6 +2,7 @@ import BigNumber from 'bignumber.js';
 import {
   getThemeColor,
   checkIsExtrinsicIndex,
+  formatBalanceAmount,
   formatHash,
   formatNumber,
   getBalanceAmount,
@@ -89,6 +90,20 @@ describe('Utils - text', () => {
       const amount = new BigNumber('12345');
       // 12345 / 10^0 = 12345
       expect(getBalanceAmount(amount).toString()).toBe('12345');
+    });
+  });
+
+  describe('formatBalanceAmount', () => {
+    it('should compact million-scale balances', () => {
+      expect(formatBalanceAmount(new BigNumber('12064779'))).toBe('12.0648 Million');
+    });
+
+    it('should keep ordinary balances readable', () => {
+      expect(formatBalanceAmount(new BigNumber('255969555555555554095805'), 18)).toBe('255,969.555556');
+    });
+
+    it('should keep small balances readable', () => {
+      expect(formatBalanceAmount(new BigNumber('123456789'), 18)).toBe('< 0.00000001');
     });
   });
 

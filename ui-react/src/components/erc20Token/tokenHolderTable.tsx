@@ -5,7 +5,7 @@ import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, getKey
 import { getPVMTokenHolderListParams, pvmTokenType, unwrap, usePVMTokenHolders } from '@/utils/api'
 import { PAGE_SIZE } from '@/utils/const'
 import BigNumber from 'bignumber.js'
-import { getBalanceAmount, getThemeColor } from '@/utils/text'
+import { formatBalanceAmount, getThemeColor } from '@/utils/text'
 import { Link } from '../link'
 import { CursorPagination } from '../cursorPagination'
 import { env } from 'next-runtime-env'
@@ -73,7 +73,7 @@ const Component: React.FC<Props> = ({ args, token, children, className }) => {
                   </TableCell>
                 )
               } else if (columnKey === 'balance') {
-                return <TableCell>{getBalanceAmount(new BigNumber(item.balance), token.decimals).toFormat()}</TableCell>
+                return <TableCell>{formatBalanceAmount(new BigNumber(item.balance), token.decimals)}</TableCell>
               }
               return <TableCell>{getKeyValue(item, columnKey)}</TableCell>
             }}

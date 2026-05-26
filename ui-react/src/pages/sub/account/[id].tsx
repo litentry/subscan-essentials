@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react'
 import { CardBody, Card, Divider, Tabs, Tab } from '@heroui/react'
 import { useRouter } from 'next/router'
-import { getBalanceAmount, getThemeColor } from '@/utils/text'
+import { formatBalanceAmount, getThemeColor } from '@/utils/text'
 import { unwrap, useAccount } from '@/utils/api'
 import { useData } from '@/context'
 import BigNumber from 'bignumber.js'
@@ -22,6 +22,7 @@ export default function Page() {
   })
 
   const accountData = unwrap(data)
+  const tokenSymbol = token?.symbol ? ` ${token.symbol}` : ''
 
   const transferable = useMemo(() => {
     if (accountData) {
@@ -56,27 +57,42 @@ export default function Page() {
                   <CardBody>
                     <div className="flex items-center">
                       <div className="w-48">Total Balance</div>
-                      <div>{getBalanceAmount(new BigNumber(accountData.balance), token?.decimals).toFormat()}</div>
+                      <div>
+                        {formatBalanceAmount(new BigNumber(accountData.balance), token?.decimals)}
+                        {tokenSymbol}
+                      </div>
                     </div>
                     <Divider className="my-2.5" />
                     <div className="flex items-center">
                       <div className="w-48">Transferrable</div>
-                      <div>{getBalanceAmount(transferable, token?.decimals).toFormat()}</div>
+                      <div>
+                        {formatBalanceAmount(transferable, token?.decimals)}
+                        {tokenSymbol}
+                      </div>
                     </div>
                     <Divider className="my-2.5" />
                     <div className="flex items-center">
                       <div className="w-48">Locked</div>
-                      <div>{getBalanceAmount(new BigNumber(accountData.locked), token?.decimals).toFormat()}</div>
+                      <div>
+                        {formatBalanceAmount(new BigNumber(accountData.locked), token?.decimals)}
+                        {tokenSymbol}
+                      </div>
                     </div>
                     <Divider className="my-2.5" />
                     <div className="flex items-center">
                       <div className="w-48">Vested</div>
-                      <div>{getBalanceAmount(new BigNumber(accountData.vested || 0), token?.decimals).toFormat()}</div>
+                      <div>
+                        {formatBalanceAmount(new BigNumber(accountData.vested || 0), token?.decimals)}
+                        {tokenSymbol}
+                      </div>
                     </div>
                     <Divider className="my-2.5" />
                     <div className="flex items-center">
                       <div className="w-48">Reserved</div>
-                      <div>{getBalanceAmount(new BigNumber(accountData.reserved), token?.decimals).toFormat()}</div>
+                      <div>
+                        {formatBalanceAmount(new BigNumber(accountData.reserved), token?.decimals)}
+                        {tokenSymbol}
+                      </div>
                     </div>
                   </CardBody>
                 </Card>

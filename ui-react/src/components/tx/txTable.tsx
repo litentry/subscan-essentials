@@ -2,7 +2,7 @@ import React, { useMemo } from 'react'
 
 import { BareProps } from '@/types/page'
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, getKeyValue, Spinner } from '@heroui/react'
-import { formatHash, getBalanceAmount, getThemeColor, timeAgo } from '@/utils/text'
+import { formatBalanceAmount, formatHash, getThemeColor, timeAgo } from '@/utils/text'
 import { getPVMTxListParams, unwrap, usePVMTxs } from '@/utils/api'
 import { PAGE_SIZE, PVM_DECIMAL } from '@/utils/const'
 import { useData } from '@/context'
@@ -83,7 +83,7 @@ const Component: React.FC<Props> = ({ children, className, args }) => {
                   </TableCell>
                 )
               } else if (columnKey === 'value') {
-                return <TableCell>{getBalanceAmount(new BigNumber(item.value), PVM_DECIMAL).toFormat()}</TableCell>
+                return <TableCell>{formatBalanceAmount(new BigNumber(item.value), PVM_DECIMAL)}</TableCell>
               } else if (columnKey === 'block_num') {
                 return (
                   <TableCell>

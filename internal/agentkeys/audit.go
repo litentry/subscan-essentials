@@ -25,16 +25,18 @@ const (
 	HeimaChainID                   = 212013
 	CredentialAuditContractAddress = "0x63c4545ac01c77cc74044f25b8edea3880224577"
 
-	AuditAppendedV2Signature      = "AuditAppendedV2(bytes32,bytes32,uint8,bytes32)"
-	AuditAppendedCurrentSignature = "AuditAppended(bytes32,bytes32,bytes32,uint8,uint256,bytes32)"
-	AuditRootAppendedV2Signature  = "AuditRootAppendedV2(bytes32,bytes32,bytes32,uint64)"
+	AuditAppendedV2Signature          = "AuditAppendedV2(bytes32,bytes32,uint8,bytes32)"
+	AuditAppendedCurrentSignature     = "AuditAppended(bytes32,bytes32,bytes32,uint8,uint256,bytes32)"
+	AuditRootAppendedV2Signature      = "AuditRootAppendedV2(bytes32,bytes32,bytes32,uint64)"
+	AuditRootAppendedCurrentSignature = "AuditRootAppended(bytes32,bytes32,uint256,uint64)"
 )
 
 var (
-	AuditAppendedV2Topic      = crypto.Keccak256Hash([]byte(AuditAppendedV2Signature)).Hex()
-	AuditAppendedCurrentTopic = crypto.Keccak256Hash([]byte(AuditAppendedCurrentSignature)).Hex()
-	AuditRootAppendedV2Topic  = crypto.Keccak256Hash([]byte(AuditRootAppendedV2Signature)).Hex()
-	ErrEnvelopeNotFound       = errors.New("agentkeys audit envelope not found")
+	AuditAppendedV2Topic          = crypto.Keccak256Hash([]byte(AuditAppendedV2Signature)).Hex()
+	AuditAppendedCurrentTopic     = crypto.Keccak256Hash([]byte(AuditAppendedCurrentSignature)).Hex()
+	AuditRootAppendedV2Topic      = crypto.Keccak256Hash([]byte(AuditRootAppendedV2Signature)).Hex()
+	AuditRootAppendedCurrentTopic = crypto.Keccak256Hash([]byte(AuditRootAppendedCurrentSignature)).Hex()
+	ErrEnvelopeNotFound           = errors.New("agentkeys audit envelope not found")
 )
 
 type Envelope struct {
@@ -72,6 +74,8 @@ type AuditAppendedV2Event struct {
 }
 
 type AuditRootAppendedV2Event struct {
+	EventName        string `json:"event_name"`
+	EventTopic       string `json:"event_topic"`
 	OperatorOmni     string `json:"operator_omni"`
 	MerkleRoot       string `json:"merkle_root"`
 	OpKindBitmapU256 string `json:"op_kind_bitmap_u256"`
@@ -470,7 +474,7 @@ func DecodeTypedAuditRowsBestEffort(ctx context.Context, logs []EVMLogRecord, wo
 }
 
 func DecodeAuditRootRows(ctx context.Context, rootLog EVMLogRecord, leafLogs []EVMLogRecord, workerBaseURL string, cache *EnvelopeCache) (*AuditRootRows, error) {
-	event, err := DecodeAuditRootAppendedV2Log(rootLog.Topics, rootLog.Data)
+	event, err := DecodeAuditRootAppendedLog(rootLog.Topics, rootLog.Data)
 	if err != nil {
 		return nil, err
 	}
@@ -483,7 +487,7 @@ func DecodeAuditRootRows(ctx context.Context, rootLog EVMLogRecord, leafLogs []E
 		return nil, fmt.Errorf("root logIndex: %w", err)
 	}
 
-	rows, err := DecodeTypedAuditRows(ctx, leafLogs, workerBaseURL, cache)
+	rows, err := DecodeTypedAuditRowsBestEffort(ctx, leafLogs, workerBaseURL, cache)
 	if err != nil {
 		return nil, err
 	}
@@ -516,6 +520,10 @@ func DecodeAuditRootRows(ctx context.Context, rootLog EVMLogRecord, leafLogs []E
 
 func PaddedOpKindTopic(opKind uint8) string {
 	return "0x" + strings.Repeat("0", 62) + fmt.Sprintf("%02x", opKind)
+}
+
+func CurrentAuditOpKindDataPrefix(opKind uint8) string {
+	return fmt.Sprintf("%064x", opKind)
 }
 
 func OpKindTopicsFromBitmap(bitmap string) ([]string, error) {
@@ -631,9 +639,54 @@ func DecodeAuditRootAppendedV2Log(topics []string, data string) (*AuditRootAppen
 		return nil, fmt.Errorf("entry_count: %w", err)
 	}
 	return &AuditRootAppendedV2Event{
+		EventName:        "AuditRootAppendedV2",
+		EventTopic:       AuditRootAppendedV2Topic,
 		OperatorOmni:     normalizeBytes32Topic(topics[1]),
 		MerkleRoot:       normalizeBytes32Topic(topics[2]),
 		OpKindBitmapU256: bitmap,
+		EntryCount:       count,
+	}, nil
+}
+
+func DecodeAuditRootAppendedLog(topics []string, data string) (*AuditRootAppendedV2Event, error) {
+	if len(topics) == 0 {
+		return nil, fmt.Errorf("audit root event requires topic0")
+	}
+	switch {
+	case strings.EqualFold(topics[0], AuditRootAppendedV2Topic):
+		return DecodeAuditRootAppendedV2Log(topics, data)
+	case strings.EqualFold(topics[0], AuditRootAppendedCurrentTopic):
+		return DecodeAuditRootAppendedCurrentLog(topics, data)
+	default:
+		return nil, fmt.Errorf("unexpected audit root event topic0 %s", topics[0])
+	}
+}
+
+func DecodeAuditRootAppendedCurrentLog(topics []string, data string) (*AuditRootAppendedV2Event, error) {
+	if len(topics) != 3 {
+		return nil, fmt.Errorf("AuditRootAppended requires 3 topics")
+	}
+	if !strings.EqualFold(topics[0], AuditRootAppendedCurrentTopic) {
+		return nil, fmt.Errorf("unexpected AuditRootAppended topic0 %s", topics[0])
+	}
+	bitmap, err := abiWord(data, 0)
+	if err != nil {
+		return nil, fmt.Errorf("op_kind_bitmap: %w", err)
+	}
+	countHex, err := abiWord(data, 1)
+	if err != nil {
+		return nil, fmt.Errorf("entry_count: %w", err)
+	}
+	count, err := strconv.ParseUint(countHex[48:], 16, 64)
+	if err != nil {
+		return nil, fmt.Errorf("entry_count: %w", err)
+	}
+	return &AuditRootAppendedV2Event{
+		EventName:        "AuditRootAppended",
+		EventTopic:       AuditRootAppendedCurrentTopic,
+		OperatorOmni:     normalizeBytes32Topic(topics[1]),
+		MerkleRoot:       normalizeBytes32Topic(topics[2]),
+		OpKindBitmapU256: "0x" + bitmap,
 		EntryCount:       count,
 	}, nil
 }

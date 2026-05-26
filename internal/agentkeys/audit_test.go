@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"sort"
 	"strings"
 	"testing"
 
@@ -423,6 +424,42 @@ func TestDecodeTypedAuditRowsAndRootLeaves(t *testing.T) {
 	assert.Equal(t, "DeviceAdd", rootRows.Rows[1].OpKindName)
 }
 
+func TestDecodeAuditRootRowsCurrentKeepsChainOnlyLeavesWhenWorkerMissing(t *testing.T) {
+	operator := "0x941cb1c3260518bbf40eac7d02663517fc7cff304d9b03e80d2cc54126c6bef2"
+	actor := "0x82a0609ae28527453e7c7654ec11d57f1b66a442e39a2ec5e3b3f76178c87268"
+	rootHash := "0x32301a0bd7c9c1d064f0d3891c78ad00a6d9fa758ebb14a1a0ff64eb4f4ca3aa"
+	firstHash := "0xdb927ad4467c02867819a1379c7c0b9a35103452c789badeae6e531b5d2f8e1c"
+	secondHash := "0x3d67f9734a38829d9e2289cd9551caa7f50ba66bd521981fb8504be4ab23a223"
+	rootLog := auditRootCurrentLog(operator, rootHash, "0x"+strings.Repeat("0", 62)+"1c", 2, 9634690, 0)
+	leafLogs := []EVMLogRecord{
+		auditAppendedCurrentLog(operator, actor, 0, secondHash, 1, 9625271, 0),
+		auditAppendedCurrentLog(operator, actor, 0, firstHash, 0, 9625257, 0),
+	}
+
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+
+	rootRows, err := DecodeAuditRootRows(context.Background(), rootLog, leafLogs, srv.URL, NewEnvelopeCache())
+	require.NoError(t, err)
+	assert.Equal(t, rootHash, rootRows.MerkleRoot)
+	assert.Equal(t, operator, rootRows.OperatorOmni)
+	assert.Equal(t, "0x"+strings.Repeat("0", 62)+"1c", rootRows.OpKindBitmapU256)
+	assert.Equal(t, uint64(2), rootRows.EntryCount)
+	assert.Equal(t, uint64(9634690), rootRows.Block)
+	assert.Equal(t, []string{firstHash, secondHash}, rootRows.Leaves)
+	require.Len(t, rootRows.Rows, 2)
+	assert.Equal(t, "0", rootRows.Rows[0].CurrentSequence)
+	assert.Equal(t, "1", rootRows.Rows[1].CurrentSequence)
+	for _, row := range rootRows.Rows {
+		assert.Equal(t, "AuditAppended", row.EventName)
+		assert.Equal(t, uint8(0), row.OpKind)
+		assert.Equal(t, "CredStore", row.OpKindName)
+		assert.False(t, row.EnvelopeAvailable)
+		assert.False(t, row.HashVerified)
+		require.NotNil(t, row.EnvelopeFetchError)
+	}
+}
+
 func TestDecodeTypedAuditRowsBestEffortKeepsLiveChainRowsWhenWorkerMissing(t *testing.T) {
 	operator := "0x" + strings.Repeat("94", 32)
 	actor := "0x" + strings.Repeat("82", 32)
@@ -442,6 +479,24 @@ func TestDecodeTypedAuditRowsBestEffortKeepsLiveChainRowsWhenWorkerMissing(t *te
 	assert.False(t, rows[0].EnvelopeAvailable)
 	require.NotNil(t, rows[0].EnvelopeFetchError)
 	assert.Contains(t, *rows[0].EnvelopeFetchError, "agentkeys audit envelope not found")
+}
+
+func TestCurrentAuditOpKindDataPrefixMatchesStoredReceiptData(t *testing.T) {
+	prefix := CurrentAuditOpKindDataPrefix(0)
+
+	assert.Equal(t, strings.Repeat("0", 64), prefix)
+	assert.NotContains(t, prefix, "0x")
+
+	liveStoredData := strings.TrimPrefix(
+		"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000db927ad4467c02867819a1379c7c0b9a35103452c789badeae6e531b5d2f8e1c",
+		"0x",
+	)
+	assert.True(t, strings.HasPrefix(liveStoredData, prefix))
+}
+
+func TestCurrentAuditOpKindDataPrefixSupportsUint8Boundary(t *testing.T) {
+	assert.Equal(t, strings.Repeat("0", 62)+"ff", CurrentAuditOpKindDataPrefix(255))
+	assert.Equal(t, fmt.Sprintf("%064x", 21), CurrentAuditOpKindDataPrefix(21))
 }
 
 func TestDecodeLiveHeimaCurrentAuditFixture(t *testing.T) {
@@ -479,6 +534,57 @@ func TestDecodeLiveHeimaCurrentAuditFixture(t *testing.T) {
 		assert.Equal(t, row.EnvelopeHash, decoded.EnvelopeHash)
 		assert.False(t, row.EnvelopeFetchedFromWorker)
 		assert.Equal(t, http.StatusNotFound, row.EnvelopeWorkerStatus)
+	}
+}
+
+func TestDecodeLiveHeimaCurrentAuditFixtureFilteringAndPagination(t *testing.T) {
+	rows := decodeLiveHeimaCurrentRows(t)
+	require.Len(t, rows, 13)
+
+	opKindRows := rows[:0]
+	for _, row := range rows {
+		if row.OpKind == 0 {
+			opKindRows = append(opKindRows, row)
+		}
+	}
+	require.Len(t, opKindRows, len(rows))
+
+	sort.SliceStable(opKindRows, func(i, j int) bool {
+		if opKindRows[i].Block == opKindRows[j].Block {
+			return opKindRows[i].LogIndex > opKindRows[j].LogIndex
+		}
+		return opKindRows[i].Block > opKindRows[j].Block
+	})
+
+	firstPage := opKindRows[:5]
+	secondPage := make([]TypedAuditRow, 0, 5)
+	cursorBlock := firstPage[len(firstPage)-1].Block
+	cursorLogIndex := firstPage[len(firstPage)-1].LogIndex
+	for _, row := range opKindRows {
+		if row.Block < cursorBlock || (row.Block == cursorBlock && row.LogIndex < cursorLogIndex) {
+			secondPage = append(secondPage, row)
+			if len(secondPage) == 5 {
+				break
+			}
+		}
+	}
+
+	require.Len(t, firstPage, 5)
+	require.Len(t, secondPage, 5)
+	assert.Equal(t, uint64(9632387), firstPage[0].Block)
+	assert.Equal(t, "12", firstPage[0].CurrentSequence)
+	assert.Equal(t, uint64(9631511), firstPage[4].Block)
+	assert.Equal(t, "8", firstPage[4].CurrentSequence)
+	assert.Equal(t, uint64(9631477), secondPage[0].Block)
+	assert.Equal(t, "7", secondPage[0].CurrentSequence)
+	combined := append([]TypedAuditRow{}, firstPage...)
+	combined = append(combined, secondPage...)
+	for _, row := range combined {
+		assert.Equal(t, "AuditAppended", row.EventName)
+		assert.Equal(t, uint8(0), row.OpKind)
+		assert.Equal(t, "CredStore", row.OpKindName)
+		assert.False(t, row.EnvelopeAvailable)
+		require.NotNil(t, row.EnvelopeFetchError)
 	}
 }
 
@@ -546,8 +652,16 @@ func TestDecodeAuditEventLogs(t *testing.T) {
 	rootData := "0x" + strings.Repeat("dd", 32) + strings.Repeat("0", 63) + "7"
 	root, err := DecodeAuditRootAppendedV2Log([]string{AuditRootAppendedV2Topic, operator, envelopeHash}, rootData)
 	require.NoError(t, err)
+	assert.Equal(t, "AuditRootAppendedV2", root.EventName)
 	assert.Equal(t, "0x"+strings.Repeat("dd", 32), root.OpKindBitmapU256)
 	assert.Equal(t, uint64(7), root.EntryCount)
+
+	currentRootData := "0x" + strings.Repeat("0", 62) + "1c" + strings.Repeat("0", 63) + "2"
+	currentRoot, err := DecodeAuditRootAppendedCurrentLog([]string{AuditRootAppendedCurrentTopic, operator, envelopeHash}, currentRootData)
+	require.NoError(t, err)
+	assert.Equal(t, "AuditRootAppended", currentRoot.EventName)
+	assert.Equal(t, "0x"+strings.Repeat("0", 62)+"1c", currentRoot.OpKindBitmapU256)
+	assert.Equal(t, uint64(2), currentRoot.EntryCount)
 }
 
 func TestFetchEnvelopeAndDecodeAcceptsHashWithoutPrefix(t *testing.T) {
@@ -674,6 +788,61 @@ func auditRootLog(operator, merkleRoot string, opKinds []uint8, entryCount uint6
 		TransactionHash:  "0x" + strings.Repeat("44", 32),
 		TransactionIndex: "0x0",
 	}
+}
+
+func auditRootCurrentLog(operator, merkleRoot string, opKindBitmap string, entryCount uint64, block uint64, logIndex uint64) EVMLogRecord {
+	return EVMLogRecord{
+		Address:          CredentialAuditContractAddress,
+		Topics:           []string{AuditRootAppendedCurrentTopic, operator, merkleRoot},
+		Data:             "0x" + strings.TrimPrefix(opKindBitmap, "0x") + fmt.Sprintf("%064x", entryCount),
+		BlockNumber:      fmt.Sprintf("0x%x", block),
+		BlockHash:        "0x" + strings.Repeat("77", 32),
+		Timestamp:        "0x65f00000",
+		LogIndex:         fmt.Sprintf("0x%x", logIndex),
+		TransactionHash:  "0x" + strings.Repeat("88", 32),
+		TransactionIndex: "0x0",
+	}
+}
+
+func decodeLiveHeimaCurrentRows(t *testing.T) []TypedAuditRow {
+	t.Helper()
+
+	body, err := os.ReadFile("../../tests/fixtures/agentkeys/heima-mainnet-current-auditappended.jsonl")
+	require.NoError(t, err)
+
+	srv := httptest.NewServer(http.NotFoundHandler())
+	defer srv.Close()
+
+	logs := make([]EVMLogRecord, 0)
+	for _, line := range strings.Split(strings.TrimSpace(string(body)), "\n") {
+		var row struct {
+			ContractAddress  string   `json:"contract_address"`
+			RawTopics        []string `json:"raw_topics"`
+			RawData          string   `json:"raw_data"`
+			BlockNumber      uint64   `json:"block_number"`
+			BlockHash        string   `json:"block_hash"`
+			Timestamp        uint64   `json:"timestamp"`
+			TxHash           string   `json:"txhash"`
+			TransactionIndex uint64   `json:"transaction_index"`
+			LogIndex         uint64   `json:"log_index"`
+		}
+		require.NoError(t, json.Unmarshal([]byte(line), &row))
+		logs = append(logs, EVMLogRecord{
+			Address:          row.ContractAddress,
+			Topics:           row.RawTopics,
+			Data:             row.RawData,
+			BlockNumber:      fmt.Sprintf("0x%x", row.BlockNumber),
+			BlockHash:        row.BlockHash,
+			Timestamp:        fmt.Sprintf("0x%x", row.Timestamp),
+			LogIndex:         fmt.Sprintf("0x%x", row.LogIndex),
+			TransactionHash:  row.TxHash,
+			TransactionIndex: fmt.Sprintf("0x%x", row.TransactionIndex),
+		})
+	}
+
+	rows, err := DecodeTypedAuditRowsBestEffort(context.Background(), logs, srv.URL, NewEnvelopeCache())
+	require.NoError(t, err)
+	return rows
 }
 
 func mustHexBytes(t *testing.T, value string) []byte {

@@ -53,23 +53,26 @@ export default function Page() {
                   <div className="text-base">Account</div>
                   <div className="text-sm break-all sm:text-base">#{accountData.address}</div>
                 </div>
-                <Card>
+                <Card data-testid="account-balance-details">
                   <CardBody>
                     {accountData.account_type && (
                       <>
-                        <div className="flex items-center">
-                          <div className="w-48">Account Type</div>
-                          <div>{accountData.account_type}</div>
+                        <div className="flex items-start gap-2">
+                          <div className="w-48 shrink-0">Account Type</div>
+                          <div className="min-w-0 flex-1">{accountData.account_type}</div>
                         </div>
                         <Divider className="my-2.5" />
                       </>
                     )}
                     {accountData.multisig_composer && (
                       <>
-                        <div className="flex items-center">
-                          <div className="w-48">Multisig Composer</div>
-                          <div className="break-all">
-                            <Link color={getThemeColor(true)} href={`/sub/account/${accountData.multisig_composer}`}>
+                        <div className="flex items-start gap-2">
+                          <div className="w-48 shrink-0">Multisig Composer</div>
+                          <div className="min-w-0 flex-1 break-all font-mono text-sm sm:text-base">
+                            <Link
+                              className="break-all"
+                              color={getThemeColor(true)}
+                              href={`/sub/account/${accountData.multisig_composer}`}>
                               {accountData.multisig_composer}
                             </Link>
                           </div>

@@ -518,6 +518,10 @@ func PaddedOpKindTopic(opKind uint8) string {
 	return "0x" + strings.Repeat("0", 62) + fmt.Sprintf("%02x", opKind)
 }
 
+func CurrentAuditOpKindDataPrefix(opKind uint8) string {
+	return fmt.Sprintf("%064x", opKind)
+}
+
 func OpKindTopicsFromBitmap(bitmap string) ([]string, error) {
 	bytes, err := hex.DecodeString(strings.TrimPrefix(strings.ToLower(bitmap), "0x"))
 	if err != nil {

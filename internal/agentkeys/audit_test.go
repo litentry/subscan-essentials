@@ -444,6 +444,24 @@ func TestDecodeTypedAuditRowsBestEffortKeepsLiveChainRowsWhenWorkerMissing(t *te
 	assert.Contains(t, *rows[0].EnvelopeFetchError, "agentkeys audit envelope not found")
 }
 
+func TestCurrentAuditOpKindDataPrefixMatchesStoredReceiptData(t *testing.T) {
+	prefix := CurrentAuditOpKindDataPrefix(0)
+
+	assert.Equal(t, strings.Repeat("0", 64), prefix)
+	assert.NotContains(t, prefix, "0x")
+
+	liveStoredData := strings.TrimPrefix(
+		"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000db927ad4467c02867819a1379c7c0b9a35103452c789badeae6e531b5d2f8e1c",
+		"0x",
+	)
+	assert.True(t, strings.HasPrefix(liveStoredData, prefix))
+}
+
+func TestCurrentAuditOpKindDataPrefixSupportsUint8Boundary(t *testing.T) {
+	assert.Equal(t, strings.Repeat("0", 62)+"ff", CurrentAuditOpKindDataPrefix(255))
+	assert.Equal(t, fmt.Sprintf("%064x", 21), CurrentAuditOpKindDataPrefix(21))
+}
+
 func TestDecodeLiveHeimaCurrentAuditFixture(t *testing.T) {
 	body, err := os.ReadFile("../../tests/fixtures/agentkeys/heima-mainnet-current-auditappended.jsonl")
 	require.NoError(t, err)

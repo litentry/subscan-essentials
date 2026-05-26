@@ -248,7 +248,8 @@ func agentkeysAuditLogs(c *gin.Context, order string, limit int, query agentkeys
 	}
 	currentOpts := appendAgentKeysAuditOpts(query.opts, model.Where("method_hash = ?", agentkeys.AuditAppendedCurrentTopic))
 	if query.opKind != nil {
-		currentOpts = append(currentOpts, model.Where("data like ?", "0x"+fmt.Sprintf("%064x", *query.opKind)+"%"))
+		prefix := agentkeys.CurrentAuditOpKindDataPrefix(*query.opKind)
+		currentOpts = append(currentOpts, model.Where("(data like ? or data like ?)", prefix+"%", "0x"+prefix+"%"))
 	}
 	logs := agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), order, limit, v2Opts...)
 	logs = append(logs, agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), order, limit, currentOpts...)...)

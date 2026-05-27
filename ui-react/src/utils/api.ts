@@ -28,6 +28,14 @@ const runtimeFetcher = ([host, url, data]: [string, string, any]) => {
     return axiosInstance.post((host || API_HOST) + url, data).then((res) => res.data)
 }
 
+export type searchHashType = {
+    hash_type: string
+}
+
+export async function checkSearchHash(host: string, data: { hash: string }): Promise<APIWrapperProps<searchHashType>> {
+    return runtimeFetcher([host, '/api/scan/check_hash', data])
+}
+
 // const postFetcher = ([url, data]: [string, any]) => {
 //     return axiosInstance.post('/api/proxy', {
 //         path: url,
@@ -256,6 +264,7 @@ export type accountType = {
     locked: string
     nonce: string
     reserved: string
+    vested?: string
 }
 
 type getAccountParams = {

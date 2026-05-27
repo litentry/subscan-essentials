@@ -53,3 +53,12 @@ func TestFormat(t *testing.T) {
 	assert.Equal(t, Format("0x3a370c6e4af506123c30e091a1cbfbc3728e1ec5"), "0x3a370c6e4af506123c30e091a1cbfbc3728e1ec5")
 	assert.Equal(t, Format("3a370c6e4af506123c30e091a1cbfbc3728e1ec5"), "0x3a370c6e4af506123c30e091a1cbfbc3728e1ec5")
 }
+
+func TestDetectSearchType(t *testing.T) {
+	assert.Equal(t, SearchTypeHash, DetectSearchType("0xbadc6963e1add4d7a588e350d837579491d08bb270f02c56b3dd5f17018dee0c"))
+	assert.Equal(t, SearchTypeEvmAddress, DetectSearchType("0x3a370c6e4af506123c30e091a1cbfbc3728e1ec5"))
+	assert.Equal(t, SearchTypeEvmAddress, DetectSearchType("3a370c6e4af506123c30e091a1cbfbc3728e1ec5"))
+	assert.Equal(t, SearchTypeSubstrateAddress, DetectSearchType("12KL8YptX9SuUCZGrsNrSRzp3zHNqbwLqmfN8vubtj1z1Bqv"))
+	assert.Equal(t, SearchTypeSubstrateAddress, DetectSearchType("3a370c6e4af506123c30e091a1cbfbc3728e1ec5fc47d87457fbb0b504903260"))
+	assert.Equal(t, "", DetectSearchType("not-an-address"))
+}

@@ -12,12 +12,21 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestAccountsCursorFiltersByEvmAccount(t *testing.T) {
+func setupAccountsCursorTest(t *testing.T) *gorm.DB {
+	t.Helper()
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&Account{}, &balanceModel.Account{}))
+	require.NoError(t, db.AutoMigrate(&Account{}, &Contract{}, &balanceModel.Account{}))
 
+	originalSg := sg
 	sg = &Storage{db: db}
+	t.Cleanup(func() { sg = originalSg })
+
+	return db
+}
+
+func TestAccountsCursorFiltersByEvmAccount(t *testing.T) {
+	db := setupAccountsCursorTest(t)
 
 	ctx := context.Background()
 	target := "0x63c4545ac01c77cc74044f25b8edea3880224577"
@@ -37,11 +46,7 @@ func TestAccountsCursorFiltersByEvmAccount(t *testing.T) {
 }
 
 func TestAccountsCursorBeforeUsesBeforeCursor(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&Account{}, &balanceModel.Account{}))
-
-	sg = &Storage{db: db}
+	db := setupAccountsCursorTest(t)
 
 	ctx := context.Background()
 	accounts := []struct {
@@ -71,11 +76,7 @@ func TestAccountsCursorBeforeUsesBeforeCursor(t *testing.T) {
 }
 
 func TestContractsCursorVerifiedSourceOnly(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&Contract{}))
-
-	sg = &Storage{db: db}
+	db := setupAccountsCursorTest(t)
 
 	ctx := context.Background()
 	contracts := []Contract{
@@ -107,4 +108,30 @@ func TestContractsCursorVerifiedSourceOnly(t *testing.T) {
 	assert.Equal(t, "VerifiedWithSource", list[0].ContractName)
 	assert.Equal(t, "verified", list[0].VerifyStatus)
 	assert.Equal(t, false, page["has_next_page"])
+}
+
+func TestAccountsCursorExcludesSmartContracts(t *testing.T) {
+	db := setupAccountsCursorTest(t)
+
+	ctx := context.Background()
+	eoa := "0x0000000000000000000000000000000000000001"
+	contract := "0x0000000000000000000000000000000000000002"
+
+	require.NoError(t, db.Create(&Account{Address: "substrate-eoa", EvmAccount: eoa}).Error)
+	require.NoError(t, db.Create(&Account{Address: "substrate-contract", EvmAccount: contract}).Error)
+	require.NoError(t, db.Create(&balanceModel.Account{Address: "substrate-eoa", Balance: decimal.NewFromInt(10)}).Error)
+	require.NoError(t, db.Create(&balanceModel.Account{Address: "substrate-contract", Balance: decimal.NewFromInt(20)}).Error)
+	require.NoError(t, db.Session(&gorm.Session{SkipHooks: true}).Create(&Contract{Address: contract}).Error)
+
+	list, page := (&ApiSrv{}).AccountsCursor(ctx, "", 10, nil, nil)
+
+	require.Len(t, list, 1)
+	assert.Equal(t, eoa, list[0].EvmAccount)
+	assert.Equal(t, decimal.NewFromInt(10), list[0].Balance)
+	assert.Equal(t, false, page["has_next_page"])
+
+	list, page = (&ApiSrv{}).AccountsCursor(ctx, contract, 10, nil, nil)
+	assert.Empty(t, list)
+	assert.Nil(t, page["start_cursor"])
+	assert.Nil(t, page["end_cursor"])
 }

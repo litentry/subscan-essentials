@@ -491,7 +491,12 @@ func (a AccountsJson) Cursor() string {
 func (a *ApiSrv) AccountsCursor(ctx context.Context, address string, limit int, before, after *string) ([]AccountsJson, map[string]interface{}) {
 	var list []AccountsJson
 	fetch := limit + 1
-	q := sg.db.WithContext(ctx).Select("evm_account,balance").Model(&Account{}).Joins("join balance_accounts on evm_accounts.address=balance_accounts.address")
+	q := sg.db.WithContext(ctx).
+		Select("evm_accounts.evm_account,balance").
+		Model(&Account{}).
+		Joins("join balance_accounts on evm_accounts.address=balance_accounts.address").
+		Joins("left join evm_contracts on evm_contracts.address=evm_accounts.evm_account").
+		Where("evm_contracts.address IS NULL")
 	if address != "" {
 		q = q.Where("evm_account = ?", address)
 	}

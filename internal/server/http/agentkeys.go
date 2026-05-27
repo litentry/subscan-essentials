@@ -86,10 +86,20 @@ func agentkeysAuditRowsHandle(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
-	if query.opKind != nil {
+	rows, nextCursor := agentkeysAuditRowsPage(rows, sortDir, limit, query.opKind)
+	c.JSON(http.StatusOK, agentkeys.AuditRowsPage{
+		ChainID:         agentkeys.HeimaChainID,
+		ContractAddress: agentkeysAuditContractAddress(),
+		Events:          rows,
+		NextCursor:      nextCursor,
+	})
+}
+
+func agentkeysAuditRowsPage(rows []agentkeys.TypedAuditRow, sortDir string, limit int, opKind *uint8) ([]agentkeys.TypedAuditRow, *string) {
+	if opKind != nil {
 		filtered := rows[:0]
 		for _, row := range rows {
-			if row.OpKind == *query.opKind {
+			if row.OpKind == *opKind {
 				filtered = append(filtered, row)
 			}
 		}
@@ -116,28 +126,19 @@ func agentkeysAuditRowsHandle(c *gin.Context) {
 		cursor := encodeAgentKeysCursor(agentkeysAuditCursor{Block: rows[len(rows)-1].Block, LogIndex: rows[len(rows)-1].LogIndex})
 		nextCursor = &cursor
 	}
-	c.JSON(http.StatusOK, agentkeys.AuditRowsPage{
-		ChainID:         agentkeys.HeimaChainID,
-		ContractAddress: agentkeysAuditContractAddress(),
-		Events:          rows,
-		NextCursor:      nextCursor,
-	})
+	return rows, nextCursor
 }
 
 func agentkeysAuditRootHandle(c *gin.Context) {
 	root := normalizeAgentKeysBytes32(c.Param("merkle_root"))
-	rootLogs := agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), "block_num desc, `index` desc", 1,
-		model.Where("address = ?", agentkeysAuditContractAddress()),
-		model.Where("method_hash = ?", agentkeys.AuditRootAppendedV2Topic),
-		model.Where("topic2 = ?", root),
-	)
+	rootLogs := agentkeysAuditRootLogs(c, root)
 	if len(rootLogs) == 0 {
 		c.JSON(http.StatusNotFound, gin.H{"error": "not_found"})
 		return
 	}
 
 	rootRecord := toAgentKeysLogs(rootLogs)[0]
-	rootEvent, err := agentkeys.DecodeAuditRootAppendedV2Log(rootRecord.Topics, rootRecord.Data)
+	rootEvent, err := agentkeys.DecodeAuditRootAppendedLog(rootRecord.Topics, rootRecord.Data)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
@@ -152,21 +153,29 @@ func agentkeysAuditRootHandle(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "root logIndex: " + err.Error()})
 		return
 	}
-	opKindTopics, err := agentkeys.OpKindTopicsFromBitmap(rootEvent.OpKindBitmapU256)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
-		return
-	}
-
 	leafLogs := []evmdao.EtherscanLogsRes{}
-	if rootEvent.EntryCount > 0 && len(opKindTopics) > 0 {
+	if rootEvent.EntryCount > 0 && strings.EqualFold(rootEvent.EventTopic, agentkeys.AuditRootAppendedCurrentTopic) {
 		leafLogs = agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), "block_num desc, `index` desc", int(rootEvent.EntryCount),
 			model.Where("address = ?", agentkeysAuditContractAddress()),
-			model.Where("method_hash = ?", agentkeys.AuditAppendedV2Topic),
+			model.Where("method_hash = ?", agentkeys.AuditAppendedCurrentTopic),
 			model.Where("topic1 = ?", rootEvent.OperatorOmni),
-			model.Where("topic3 in ?", opKindTopics),
 			model.Where("(block_num < ? OR (block_num = ? AND `index` < ?))", rootBlock, rootBlock, rootLogIndex),
 		)
+	} else if rootEvent.EntryCount > 0 {
+		opKindTopics, err := agentkeys.OpKindTopicsFromBitmap(rootEvent.OpKindBitmapU256)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+		if len(opKindTopics) > 0 {
+			leafLogs = agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), "block_num desc, `index` desc", int(rootEvent.EntryCount),
+				model.Where("address = ?", agentkeysAuditContractAddress()),
+				model.Where("method_hash = ?", agentkeys.AuditAppendedV2Topic),
+				model.Where("topic1 = ?", rootEvent.OperatorOmni),
+				model.Where("topic3 in ?", opKindTopics),
+				model.Where("(block_num < ? OR (block_num = ? AND `index` < ?))", rootBlock, rootBlock, rootLogIndex),
+			)
+		}
 	}
 
 	rows, err := agentkeys.DecodeAuditRootRows(c.Request.Context(), rootRecord, toAgentKeysLogs(leafLogs), agentkeysAuditWorkerURL(), agentkeysEnvelopeCache)
@@ -175,6 +184,31 @@ func agentkeysAuditRootHandle(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, rows)
+}
+
+func agentkeysAuditRootLogs(c *gin.Context, root string) []evmdao.EtherscanLogsRes {
+	opts := []model.Option{
+		model.Where("address = ?", agentkeysAuditContractAddress()),
+		model.Where("topic2 = ?", root),
+	}
+	logs := agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), "block_num desc, `index` desc", 1,
+		appendAgentKeysAuditOpts(opts, model.Where("method_hash = ?", agentkeys.AuditRootAppendedCurrentTopic))...)
+	logs = append(logs, agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), "block_num desc, `index` desc", 1,
+		appendAgentKeysAuditOpts(opts, model.Where("method_hash = ?", agentkeys.AuditRootAppendedV2Topic))...)...)
+	sort.SliceStable(logs, func(i, j int) bool {
+		leftBlock, _ := parseAgentKeysUint(logs[i].BlockNumber)
+		rightBlock, _ := parseAgentKeysUint(logs[j].BlockNumber)
+		if leftBlock == rightBlock {
+			leftIndex, _ := parseAgentKeysUint(logs[i].LogIndex)
+			rightIndex, _ := parseAgentKeysUint(logs[j].LogIndex)
+			return leftIndex > rightIndex
+		}
+		return leftBlock > rightBlock
+	})
+	if len(logs) > 1 {
+		logs = logs[:1]
+	}
+	return logs
 }
 
 func agentkeysAuditWorkerURL() string {
@@ -248,7 +282,8 @@ func agentkeysAuditLogs(c *gin.Context, order string, limit int, query agentkeys
 	}
 	currentOpts := appendAgentKeysAuditOpts(query.opts, model.Where("method_hash = ?", agentkeys.AuditAppendedCurrentTopic))
 	if query.opKind != nil {
-		currentOpts = append(currentOpts, model.Where("data like ?", "0x"+fmt.Sprintf("%064x", *query.opKind)+"%"))
+		prefix := agentkeys.CurrentAuditOpKindDataPrefix(*query.opKind)
+		currentOpts = append(currentOpts, model.Where("(data like ? or data like ?)", prefix+"%", "0x"+prefix+"%"))
 	}
 	logs := agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), order, limit, v2Opts...)
 	logs = append(logs, agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), order, limit, currentOpts...)...)

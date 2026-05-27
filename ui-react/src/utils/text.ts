@@ -47,6 +47,36 @@ export function getBalanceAmount(amount: BigNumber, decimals?: number): BigNumbe
   return new BigNumber(amount).dividedBy(BIG_TEN.pow(decimals || 0))
 }
 
+const COMPACT_BALANCE_UNITS = [
+  { value: new BigNumber('1000000000000'), label: 'Trillion' },
+  { value: new BigNumber('1000000000'), label: 'Billion' },
+  { value: new BigNumber('1000000'), label: 'Million' },
+] as const
+
+export function formatBalanceAmount(amount: BigNumber, decimals?: number): string {
+  const balance = getBalanceAmount(amount, decimals)
+  const absBalance = balance.abs()
+  const compactUnit = COMPACT_BALANCE_UNITS.find((unit) => absBalance.isGreaterThanOrEqualTo(unit.value))
+
+  if (compactUnit) {
+    return `${balance.dividedBy(compactUnit.value).decimalPlaces(4, BigNumber.ROUND_HALF_UP).toFormat(4)} ${compactUnit.label}`
+  }
+
+  if (absBalance.isZero()) {
+    return '0'
+  }
+
+  if (absBalance.isLessThan(1)) {
+    if (absBalance.isLessThan('0.00000001')) {
+      return balance.isNegative() ? '> -0.00000001' : '< 0.00000001'
+    }
+
+    return balance.decimalPlaces(8, BigNumber.ROUND_HALF_UP).toFormat()
+  }
+
+  return balance.decimalPlaces(6, BigNumber.ROUND_HALF_UP).toFormat()
+}
+
 export function timeAgo(time: number | string, now = Date.now()) {
     const second = +time * 1000
     const d = new Date(second)

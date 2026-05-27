@@ -10,7 +10,7 @@ import {
 } from '@/utils/api'
 import { PAGE_SIZE } from '@/utils/const'
 import BigNumber from 'bignumber.js'
-import { formatHash, getBalanceAmount, getThemeColor, timeAgo } from '@/utils/text'
+import { formatBalanceAmount, formatHash, getThemeColor, timeAgo } from '@/utils/text'
 import { Link } from '../link'
 import { CursorPagination } from '../cursorPagination'
 import { env } from 'next-runtime-env'
@@ -90,7 +90,7 @@ const Component: React.FC<Props> = ({ args, token, children, className }) => {
               } else if (columnKey === 'value') {
                 return (
                   <TableCell>
-                    {getBalanceAmount(new BigNumber(item.value), item.decimals).toFormat()} {item.symbol}
+                    {formatBalanceAmount(new BigNumber(item.value), item.decimals)} {item.symbol}
                   </TableCell>
                 )
               } else if (columnKey === 'create_at') {

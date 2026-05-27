@@ -22,10 +22,16 @@ import { useData } from '@/context'
 import Image from 'next/image'
 import _ from 'lodash'
 import { env } from 'next-runtime-env'
+import { checkSearchHash } from '@/utils/api'
 
 interface Props extends BareProps {
   value: string
 }
+
+type SearchType = 'auto' | 'sub_block' | 'sub_extrinsic' | 'sub_event' | 'sub_account' | 'pvm_block' | 'pvm_tx' | 'pvm_contract' | 'pvm_account'
+
+const evmAddressRegex = /^(0x)?[0-9a-fA-F]{40}$/
+const substrateAccountRegex = /^[1-9A-HJ-NP-Za-km-z]{32,60}$/
 const ChevronDown = ({ fill, size, ...props }: { fill?: string; size?: number | string } & React.SVGProps<SVGSVGElement>) => {
   return (
     <svg fill="none" height={size || 24} viewBox="0 0 24 24" width={size || 24} xmlns="http://www.w3.org/2000/svg" {...props}>
@@ -59,7 +65,7 @@ const SearchIcon = ({ size = 24, strokeWidth = 1.5, ...props }) => {
 const Component: React.FC<Props> = ({ children, className }) => {
   const { metadata, token } = useData()
   const [value, setValue] = useState('')
-  const [type, setType] = useState<string[]>(['sub_block'])
+  const [type, setType] = useState<string[]>(['auto'])
   const router = useRouter()
 
   const showSubstrate = metadata?.enable_substrate
@@ -73,6 +79,12 @@ const Component: React.FC<Props> = ({ children, className }) => {
     search: <SearchIcon fill="none" size={16} />,
   }
   const typeOptions = useMemo(() => {
+    const autoOptions = [
+      {
+        name: 'Auto Detect',
+        value: 'auto',
+      },
+    ]
     const subOptions = [
       {
         name: 'Substrate Block',
@@ -109,7 +121,7 @@ const Component: React.FC<Props> = ({ children, className }) => {
         value: 'pvm_account',
       },
     ]
-    let options: any[] = []
+    let options: any[] = [...autoOptions]
     if (metadata?.enable_substrate) {
       _.forEach(subOptions, (item) => {
         options.push({
@@ -131,45 +143,91 @@ const Component: React.FC<Props> = ({ children, className }) => {
 
   const handleSearch = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter') {
-      handleRedirect()
+      void handleRedirect()
     }
   }
-  const handleRedirect = () => {
-    if (value.trim()) {
-      switch (type[0]) {
-        case 'sub_block':
-          router.push(`/sub/block/${value.trim()}`)
-          break
-        case 'sub_extrinsic':
-          router.push(`/sub/extrinsic/${value.trim()}`)
-          break
-        case 'sub_event':
-          router.push(`/sub/event/${value.trim()}`)
-          break
-        case 'sub_account':
-          router.push(`/sub/account/${value.trim()}`)
-          break
-        case 'pvm_block':
-          router.push(`/block/${value.trim()}`)
-          break
-        case 'pvm_tx':
-          router.push(`/tx/${value.trim()}`)
-          break
-        case 'pvm_contract':
-          router.push(`/contract/${value.trim()}`)
-          break
-        case 'pvm_account':
-          router.push(`/address/${value.trim()}`)
-          break
-        default:
-          break
+
+  const routeForSearchType = (searchType: SearchType | '', search: string) => {
+    switch (searchType) {
+      case 'sub_block':
+        return `/sub/block/${search}`
+      case 'sub_extrinsic':
+        return `/sub/extrinsic/${search}`
+      case 'sub_event':
+        return `/sub/event/${search}`
+      case 'sub_account':
+        return `/sub/account/${search}`
+      case 'pvm_block':
+        return `/block/${search}`
+      case 'pvm_tx':
+        return `/tx/${search}`
+      case 'pvm_contract':
+        return `/contract/${search}`
+      case 'pvm_account':
+        return `/address/${search}`
+      default:
+        return ''
+    }
+  }
+
+  const routeTypeFromHashType = (hashType: string): SearchType | '' => {
+    switch (hashType) {
+      case 'block':
+        return 'sub_block'
+      case 'extrinsic':
+        return 'sub_extrinsic'
+      case 'address':
+        return 'sub_account'
+      case 'evm_block':
+        return 'pvm_block'
+      case 'evm_transaction':
+        return 'pvm_tx'
+      case 'evm_contract':
+        return 'pvm_contract'
+      case 'evm_address':
+        return 'pvm_account'
+      default:
+        return ''
+    }
+  }
+
+  const detectSearchType = async (search: string): Promise<SearchType | ''> => {
+    if (showSubstrate !== false && substrateAccountRegex.test(search) && !evmAddressRegex.test(search)) {
+      return 'sub_account'
+    }
+
+    try {
+      const detected = await checkSearchHash(env('NEXT_PUBLIC_API_HOST') || '', { hash: search })
+      if (detected?.code === 0 && detected.data?.hash_type) {
+        return routeTypeFromHashType(detected.data.hash_type)
       }
+    } catch (error) {
+      // Keep the manual search selector usable when the backend does not support auto-detection yet.
+    }
+
+    if (showPVM !== false && evmAddressRegex.test(search)) {
+      return 'pvm_account'
+    }
+    return showSubstrate !== false ? 'sub_block' : showPVM ? 'pvm_block' : ''
+  }
+
+  const handleRedirect = async () => {
+    const search = value.trim()
+    if (!search) {
+      return
+    }
+
+    const selectedType = (type[0] || 'auto') as SearchType
+    const searchType = selectedType === 'auto' ? await detectSearchType(search) : selectedType
+    const route = routeForSearchType(searchType, search)
+    if (route) {
+      router.push(route)
       setValue('')
     }
   }
   useEffect(() => {
     if (metadata?.enable_evm && !metadata?.enable_substrate) {
-      setType(['pvm_block'])
+      setType(['auto'])
     }
   }, [metadata?.enable_evm, metadata?.enable_substrate])
 
@@ -442,6 +500,7 @@ const Component: React.FC<Props> = ({ children, className }) => {
                     },
                   }}
                   label=""
+                  aria-label="Search type"
                   selectedKeys={type}
                   onSelectionChange={(key) => {
                     if (key.currentKey) {
@@ -455,7 +514,7 @@ const Component: React.FC<Props> = ({ children, className }) => {
                 <Divider orientation="vertical" className="mx-4" />
               </div>
             }
-            endContent={<SearchIcon fill="none" size={24} onClick={handleRedirect} className="mr-3 cursor-pointer" />}
+            endContent={<SearchIcon fill="none" size={24} onClick={() => void handleRedirect()} className="mr-3 cursor-pointer" />}
           />
         </div>
       </div>

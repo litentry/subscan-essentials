@@ -1,8 +1,6 @@
 package model
 
-import (
-	"github.com/shopspring/decimal"
-)
+import "github.com/shopspring/decimal"
 
 type Account struct {
 	ID       uint            `gorm:"primary_key" json:"-"`
@@ -11,6 +9,7 @@ type Account struct {
 	Balance  decimal.Decimal `json:"balance" gorm:"type:decimal(65,0);index:balance;index:balance_address,priority:1"`
 	Locked   decimal.Decimal `json:"locked" gorm:"type:decimal(65,0);"`
 	Reserved decimal.Decimal `json:"reserved" gorm:"type:decimal(65,0);"`
+	Vested   decimal.Decimal `json:"vested" gorm:"type:decimal(65,0);"`
 }
 
 func (a *Account) TableName() string {
@@ -25,7 +24,67 @@ type AccountData struct {
 		Reserved   decimal.Decimal `json:"reserved"`
 		MiscFrozen decimal.Decimal `json:"miscFrozen"`
 		FeeFrozen  decimal.Decimal `json:"feeFrozen"`
+		Frozen     decimal.Decimal `json:"frozen"`
 	} `json:"data"`
+}
+
+type BalanceLock struct {
+	ID     string          `json:"id"`
+	Amount decimal.Decimal `json:"amount"`
+}
+
+type LockSummary struct {
+	Locked decimal.Decimal
+}
+
+func (a AccountData) LockedBalance() decimal.Decimal {
+	return decimal.Max(a.Data.Frozen, decimal.Max(a.Data.MiscFrozen, a.Data.FeeFrozen))
+}
+
+func SummarizeLocks(locks []BalanceLock) LockSummary {
+	var summary LockSummary
+	for _, lock := range locks {
+		if lock.Amount.GreaterThan(summary.Locked) {
+			summary.Locked = lock.Amount
+		}
+	}
+	return summary
+}
+
+func AccountLockSummary(accountData *AccountData, locks []BalanceLock) LockSummary {
+	summary := SummarizeLocks(locks)
+	if accountData == nil {
+		return summary
+	}
+	if dataLocked := accountData.LockedBalance(); dataLocked.GreaterThan(summary.Locked) {
+		summary.Locked = dataLocked
+	}
+	return summary
+}
+
+type VestingInfo struct {
+	Locked        decimal.Decimal `json:"locked"`
+	PerBlock      decimal.Decimal `json:"perBlock"`
+	StartingBlock uint64          `json:"startingBlock"`
+}
+
+func (v VestingInfo) VestedAt(blockNum uint64) decimal.Decimal {
+	if blockNum <= v.StartingBlock {
+		return decimal.Zero
+	}
+	vested := v.PerBlock.Mul(decimal.NewFromUint64(blockNum - v.StartingBlock))
+	if vested.GreaterThan(v.Locked) {
+		return v.Locked
+	}
+	return vested
+}
+
+func SummarizeVesting(vesting []VestingInfo, blockNum uint64) decimal.Decimal {
+	var vested decimal.Decimal
+	for _, schedule := range vesting {
+		vested = vested.Add(schedule.VestedAt(blockNum))
+	}
+	return vested
 }
 
 type Transfer struct {

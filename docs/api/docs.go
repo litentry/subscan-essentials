@@ -1431,6 +1431,9 @@ const docTemplate = `{
                 },
                 "reserved": {
                     "type": "number"
+                },
+                "vested": {
+                    "type": "number"
                 }
             }
         },

@@ -162,6 +162,9 @@ func (t *Transaction) TokenTransferRecords(ctx context.Context) (data []DetailsT
 }
 
 func GetTransactionByHash(c context.Context, hash string) *Transaction {
+	if sg == nil || sg.db == nil {
+		return nil
+	}
 	var t Transaction
 	if query := sg.db.WithContext(c).Where("hash = ?", hash).Take(&t); query.Error != nil {
 		return nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/itering/subscan/model"
 	balanceModel "github.com/itering/subscan/plugins/balance/model"
+	"github.com/itering/subscan/plugins/evm/agentkeys"
 	"github.com/itering/subscan/plugins/evm/dao"
 	"github.com/shopspring/decimal"
 )
@@ -87,7 +88,11 @@ func (m MockServer) Contracts(ctx context.Context, page int, row int) ([]dao.Con
 	return nil, 0
 }
 
-func (m MockServer) GetTransactionByHash(_ context.Context, _ string) *dao.Transaction {
+func (m MockServer) GetTransactionByHash(_ context.Context, hash string) *dao.Transaction {
+	if hash == liveDeviceRegisteredTx {
+		sidecar, _ := agentkeys.ContractByAddress("0x76D574a107727bE87fc1422661A030FEFda70786")
+		return &dao.Transaction{Hash: hash, ToAddress: sidecar.Address, Success: true}
+	}
 	return &dao.Transaction{Hash: "0xdf03f7309487778643a40a7fc4a8224f8c984f7f1821d970458cabc51c6a59b6", Success: true}
 }
 

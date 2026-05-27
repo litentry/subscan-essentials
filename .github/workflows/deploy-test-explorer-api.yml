@@ -1,0 +1,47 @@
+name: Deploy Test Explorer API
+
+on:
+  push:
+    branches:
+      - crossagent
+  workflow_dispatch:
+
+concurrency:
+  group: test-explorer-api-deploy
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Configure SSH
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.TEST_EXPLORER_DEPLOY_HOST }}
+          DEPLOY_SSH_KEY: ${{ secrets.TEST_EXPLORER_DEPLOY_SSH_KEY }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_HOST"
+          test -n "$DEPLOY_SSH_KEY"
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_SSH_KEY" > ~/.ssh/test-explorer-deploy
+          chmod 600 ~/.ssh/test-explorer-deploy
+          ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
+
+      - name: Deploy
+        shell: bash
+        env:
+          DEPLOY_HOST: ${{ secrets.TEST_EXPLORER_DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.TEST_EXPLORER_DEPLOY_USER }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_USER"
+          ssh -i ~/.ssh/test-explorer-deploy \
+            -o BatchMode=yes \
+            "$DEPLOY_USER@$DEPLOY_HOST" \
+            'bash -s' < scripts/deploy-test-explorer-api.sh

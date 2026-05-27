@@ -82,7 +82,12 @@ export default function Page() {
                         {contractData.verify_status === 'verified' ? (
                           <ContractInfo contract={contractData}></ContractInfo>
                         ) : (
-                          <ContractVerify address={id} />
+                          <div className="space-y-4">
+                            <div className="rounded-lg border border-default-200 bg-default-100 p-4 text-sm">
+                              Source code has not been uploaded for this contract.
+                            </div>
+                            <ContractVerify address={id} />
+                          </div>
                         )}
                       </Tab>
                       <Tab key="transactions" title="Transactions">

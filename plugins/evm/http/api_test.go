@@ -23,7 +23,7 @@ func (m MockServer) AccountsCursor(ctx context.Context, address string, limit in
 	return nil, nil
 }
 
-func (m MockServer) ContractsCursor(ctx context.Context, limit int, before, after *string) ([]dao.ContractsJson, map[string]interface{}) {
+func (m MockServer) ContractsCursor(ctx context.Context, limit int, before, after *string, verifiedSourceOnly bool) ([]dao.ContractsJson, map[string]interface{}) {
 	return nil, nil
 }
 

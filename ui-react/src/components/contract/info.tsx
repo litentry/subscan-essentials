@@ -53,7 +53,7 @@ const Component: React.FC<Props> = ({ children, className, contract }) => {
       <div>
         <div className="mb-2">Contract Source Code</div>
         <div>
-          <OverflowText text={contract.source_code} />
+          {contract.source_code ? <OverflowText text={contract.source_code} /> : <div>No uploaded source code is stored for this contract.</div>}
         </div>
       </div>
       <div>

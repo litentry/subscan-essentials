@@ -1,7 +1,7 @@
-import React, { useMemo } from 'react'
+import React from 'react'
 
 import { BareProps } from '@/types/page'
-import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, getKeyValue, Spinner } from '@heroui/react'
+import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, getKeyValue, Spinner, Switch } from '@heroui/react'
 import { getPVMContractListParams, unwrap, usePVMContracts } from '@/utils/api'
 import { PAGE_SIZE } from '@/utils/const'
 import { useData } from '@/context'
@@ -18,11 +18,13 @@ const Component: React.FC<Props> = ({ children, className, args }) => {
   const { metadata, token } = useData()
   const [page, setPage] = React.useState(1)
   const [cursor, setCursor] = React.useState<{ after?: number; before?: number }>({})
+  const [verifiedSourceOnly, setVerifiedSourceOnly] = React.useState(false)
   const rowsPerPage = PAGE_SIZE
   const NEXT_PUBLIC_API_HOST = env('NEXT_PUBLIC_API_HOST') || ''
   const { data, isLoading } = usePVMContracts(NEXT_PUBLIC_API_HOST, {
     ...args,
     row: rowsPerPage,
+    verified_source: verifiedSourceOnly,
     ...cursor,
   })
   const contractsData = unwrap(data)
@@ -41,46 +43,51 @@ const Component: React.FC<Props> = ({ children, className, args }) => {
       setPage(page + 1)
     }
   }
+  const handleVerifiedSourceChange = (selected: boolean) => {
+    setVerifiedSourceOnly(selected)
+    setCursor({})
+    setPage(1)
+  }
   return (
-    <Table
-      aria-label="Table"
-      bottomContent={
-        <CursorPagination
-          pagination={pagination}
-          onPrevious={handlePrevious}
-          onNext={handleNext}
-          color={getThemeColor()}
-        />
-      }
-      classNames={{
-        wrapper: 'min-h-[222px]',
-        td: 'h-[50px]',
-      }}>
-      <TableHeader>
-        <TableColumn key="address">Contract</TableColumn>
-        <TableColumn key="contract_name">Name</TableColumn>
-        <TableColumn key="transaction_count">Transaction</TableColumn>
-        <TableColumn key="verify_status">Status</TableColumn>
-      </TableHeader>
-      <TableBody isLoading={isLoading} loadingContent={<Spinner color={getThemeColor()} />} items={items || []} emptyContent={'No data'}>
-        {(item) => (
-          <TableRow key={item.address}>
-            {(columnKey) => {
-              if (columnKey === 'address') {
-                return (
-                  <TableCell>
-                    <Link href={`/contract/${item.address}`}>{item.address}</Link>
-                  </TableCell>
-                )
-              } else if (columnKey === 'verify_status') {
-                return <TableCell>{item.verify_status === 'verified' ? 'Verified' : 'Unverified'}</TableCell>
-              }
-              return <TableCell>{getKeyValue(item, columnKey)}</TableCell>
-            }}
-          </TableRow>
-        )}
-      </TableBody>
-    </Table>
+    <div className="space-y-3">
+      <div className="flex justify-end">
+        <Switch size="sm" isSelected={verifiedSourceOnly} onValueChange={handleVerifiedSourceChange}>
+          Verified source only
+        </Switch>
+      </div>
+      <Table
+        aria-label="Table"
+        bottomContent={<CursorPagination pagination={pagination} onPrevious={handlePrevious} onNext={handleNext} color={getThemeColor()} />}
+        classNames={{
+          wrapper: 'min-h-[222px]',
+          td: 'h-[50px]',
+        }}>
+        <TableHeader>
+          <TableColumn key="address">Contract</TableColumn>
+          <TableColumn key="contract_name">Name</TableColumn>
+          <TableColumn key="transaction_count">Transaction</TableColumn>
+          <TableColumn key="verify_status">Status</TableColumn>
+        </TableHeader>
+        <TableBody isLoading={isLoading} loadingContent={<Spinner color={getThemeColor()} />} items={items || []} emptyContent={'No data'}>
+          {(item) => (
+            <TableRow key={item.address}>
+              {(columnKey) => {
+                if (columnKey === 'address') {
+                  return (
+                    <TableCell>
+                      <Link href={`/contract/${item.address}`}>{item.address}</Link>
+                    </TableCell>
+                  )
+                } else if (columnKey === 'verify_status') {
+                  return <TableCell>{item.verify_status === 'verified' ? 'Verified' : 'Unverified'}</TableCell>
+                }
+                return <TableCell>{getKeyValue(item, columnKey)}</TableCell>
+              }}
+            </TableRow>
+          )}
+        </TableBody>
+      </Table>
+    </div>
   )
 }
 

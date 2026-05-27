@@ -26,7 +26,7 @@ type ISrv interface {
 	BlockByHash(ctx context.Context, hash string) *EvmBlock
 	TransactionsCursor(ctx context.Context, limit int, before, after *uint, opts ...model.Option) ([]TransactionSampleJson, map[string]interface{})
 	AccountsCursor(ctx context.Context, address string, limit int, before, after *string) ([]AccountsJson, map[string]interface{})
-	ContractsCursor(ctx context.Context, limit int, before, after *string) ([]ContractsJson, map[string]interface{})
+	ContractsCursor(ctx context.Context, limit int, before, after *string, verifiedSourceOnly bool) ([]ContractsJson, map[string]interface{})
 
 	AccountTokens(ctx context.Context, address, category string) []AccountTokenJson
 	CollectiblesCursor(ctx context.Context, address string, contract string, limit int, before, after *string) ([]Erc721Holders, map[string]interface{})
@@ -546,10 +546,13 @@ func (c ContractsJson) Cursor() string {
 	return util.Base64Encode(fmt.Sprintf("%d_%s", c.TransactionCount, c.Address))
 }
 
-func (a *ApiSrv) ContractsCursor(ctx context.Context, limit int, before, after *string) ([]ContractsJson, map[string]interface{}) {
+func (a *ApiSrv) ContractsCursor(ctx context.Context, limit int, before, after *string, verifiedSourceOnly bool) ([]ContractsJson, map[string]interface{}) {
 	var list []ContractsJson
 	fetch := limit + 1
 	q := sg.db.WithContext(ctx).Model(&Contract{}).Select("contract_name,address,transaction_count,verify_status")
+	if verifiedSourceOnly {
+		q = q.Where("verify_status = ? AND source_code IS NOT NULL AND source_code <> ?", "verified", "")
+	}
 	if cursor := cursorDecode(after); len(cursor) == 2 {
 		q = q.Where("(transaction_count,address) < (?,?)", cursor[0], cursor[1]).Order("transaction_count desc").Order("address desc")
 	} else if cursor = cursorDecode(before); len(cursor) == 2 {

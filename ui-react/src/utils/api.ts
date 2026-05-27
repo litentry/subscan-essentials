@@ -658,6 +658,7 @@ export type getPVMContractListParams = {
     row?: number
     after?: number
     before?: number
+    verified_source?: boolean
 }
 
 type getPVMContractParams = {

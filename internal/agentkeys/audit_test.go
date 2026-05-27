@@ -443,7 +443,8 @@ func TestDecodeAuditRootRowsCurrentKeepsChainOnlyLeavesWhenWorkerMissing(t *test
 	require.NoError(t, err)
 	assert.Equal(t, rootHash, rootRows.MerkleRoot)
 	assert.Equal(t, operator, rootRows.OperatorOmni)
-	assert.Equal(t, "0x"+strings.Repeat("0", 62)+"1c", rootRows.OpKindBitmapU256)
+	assert.Empty(t, rootRows.OpKindBitmapU256)
+	assert.Equal(t, "28", rootRows.RootIndex)
 	assert.Equal(t, uint64(2), rootRows.EntryCount)
 	assert.Equal(t, uint64(9634690), rootRows.Block)
 	assert.Equal(t, []string{firstHash, secondHash}, rootRows.Leaves)
@@ -660,7 +661,8 @@ func TestDecodeAuditEventLogs(t *testing.T) {
 	currentRoot, err := DecodeAuditRootAppendedCurrentLog([]string{AuditRootAppendedCurrentTopic, operator, envelopeHash}, currentRootData)
 	require.NoError(t, err)
 	assert.Equal(t, "AuditRootAppended", currentRoot.EventName)
-	assert.Equal(t, "0x"+strings.Repeat("0", 62)+"1c", currentRoot.OpKindBitmapU256)
+	assert.Empty(t, currentRoot.OpKindBitmapU256)
+	assert.Equal(t, "28", currentRoot.RootIndex)
 	assert.Equal(t, uint64(2), currentRoot.EntryCount)
 }
 
@@ -790,11 +792,11 @@ func auditRootLog(operator, merkleRoot string, opKinds []uint8, entryCount uint6
 	}
 }
 
-func auditRootCurrentLog(operator, merkleRoot string, opKindBitmap string, entryCount uint64, block uint64, logIndex uint64) EVMLogRecord {
+func auditRootCurrentLog(operator, merkleRoot string, rootIndex string, entryCount uint64, block uint64, logIndex uint64) EVMLogRecord {
 	return EVMLogRecord{
 		Address:          CredentialAuditContractAddress,
 		Topics:           []string{AuditRootAppendedCurrentTopic, operator, merkleRoot},
-		Data:             "0x" + strings.TrimPrefix(opKindBitmap, "0x") + fmt.Sprintf("%064x", entryCount),
+		Data:             "0x" + strings.TrimPrefix(rootIndex, "0x") + fmt.Sprintf("%064x", entryCount),
 		BlockNumber:      fmt.Sprintf("0x%x", block),
 		BlockHash:        "0x" + strings.Repeat("77", 32),
 		Timestamp:        "0x65f00000",

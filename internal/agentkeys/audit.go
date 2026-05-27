@@ -78,7 +78,8 @@ type AuditRootAppendedV2Event struct {
 	EventTopic       string `json:"event_topic"`
 	OperatorOmni     string `json:"operator_omni"`
 	MerkleRoot       string `json:"merkle_root"`
-	OpKindBitmapU256 string `json:"op_kind_bitmap_u256"`
+	OpKindBitmapU256 string `json:"op_kind_bitmap_u256,omitempty"`
+	RootIndex        string `json:"root_index,omitempty"`
 	EntryCount       uint64 `json:"entry_count"`
 }
 
@@ -125,7 +126,8 @@ type AuditRootRows struct {
 	ContractAddress  string          `json:"contract_address"`
 	MerkleRoot       string          `json:"merkle_root"`
 	OperatorOmni     string          `json:"operator_omni"`
-	OpKindBitmapU256 string          `json:"op_kind_bitmap_u256"`
+	OpKindBitmapU256 string          `json:"op_kind_bitmap_u256,omitempty"`
+	RootIndex        string          `json:"root_index,omitempty"`
 	EntryCount       uint64          `json:"entry_count"`
 	Block            uint64          `json:"block"`
 	BlockHash        string          `json:"block_hash"`
@@ -508,6 +510,7 @@ func DecodeAuditRootRows(ctx context.Context, rootLog EVMLogRecord, leafLogs []E
 		MerkleRoot:       event.MerkleRoot,
 		OperatorOmni:     event.OperatorOmni,
 		OpKindBitmapU256: event.OpKindBitmapU256,
+		RootIndex:        event.RootIndex,
 		EntryCount:       event.EntryCount,
 		Block:            block,
 		BlockHash:        normalizeHexHash(rootLog.BlockHash),
@@ -669,9 +672,9 @@ func DecodeAuditRootAppendedCurrentLog(topics []string, data string) (*AuditRoot
 	if !strings.EqualFold(topics[0], AuditRootAppendedCurrentTopic) {
 		return nil, fmt.Errorf("unexpected AuditRootAppended topic0 %s", topics[0])
 	}
-	bitmap, err := abiWord(data, 0)
+	rootIndex, err := abiUint256Decimal(data, 0)
 	if err != nil {
-		return nil, fmt.Errorf("op_kind_bitmap: %w", err)
+		return nil, fmt.Errorf("root_index: %w", err)
 	}
 	countHex, err := abiWord(data, 1)
 	if err != nil {
@@ -682,12 +685,12 @@ func DecodeAuditRootAppendedCurrentLog(topics []string, data string) (*AuditRoot
 		return nil, fmt.Errorf("entry_count: %w", err)
 	}
 	return &AuditRootAppendedV2Event{
-		EventName:        "AuditRootAppended",
-		EventTopic:       AuditRootAppendedCurrentTopic,
-		OperatorOmni:     normalizeBytes32Topic(topics[1]),
-		MerkleRoot:       normalizeBytes32Topic(topics[2]),
-		OpKindBitmapU256: "0x" + bitmap,
-		EntryCount:       count,
+		EventName:    "AuditRootAppended",
+		EventTopic:   AuditRootAppendedCurrentTopic,
+		OperatorOmni: normalizeBytes32Topic(topics[1]),
+		MerkleRoot:   normalizeBytes32Topic(topics[2]),
+		RootIndex:    rootIndex,
+		EntryCount:   count,
 	}, nil
 }
 

@@ -153,12 +153,6 @@ func agentkeysAuditRootHandle(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "root logIndex: " + err.Error()})
 		return
 	}
-	opKindTopics, err := agentkeys.OpKindTopicsFromBitmap(rootEvent.OpKindBitmapU256)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
-		return
-	}
-
 	leafLogs := []evmdao.EtherscanLogsRes{}
 	if rootEvent.EntryCount > 0 && strings.EqualFold(rootEvent.EventTopic, agentkeys.AuditRootAppendedCurrentTopic) {
 		leafLogs = agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), "block_num desc, `index` desc", int(rootEvent.EntryCount),
@@ -167,14 +161,21 @@ func agentkeysAuditRootHandle(c *gin.Context) {
 			model.Where("topic1 = ?", rootEvent.OperatorOmni),
 			model.Where("(block_num < ? OR (block_num = ? AND `index` < ?))", rootBlock, rootBlock, rootLogIndex),
 		)
-	} else if rootEvent.EntryCount > 0 && len(opKindTopics) > 0 {
-		leafLogs = agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), "block_num desc, `index` desc", int(rootEvent.EntryCount),
-			model.Where("address = ?", agentkeysAuditContractAddress()),
-			model.Where("method_hash = ?", agentkeys.AuditAppendedV2Topic),
-			model.Where("topic1 = ?", rootEvent.OperatorOmni),
-			model.Where("topic3 in ?", opKindTopics),
-			model.Where("(block_num < ? OR (block_num = ? AND `index` < ?))", rootBlock, rootBlock, rootLogIndex),
-		)
+	} else if rootEvent.EntryCount > 0 {
+		opKindTopics, err := agentkeys.OpKindTopicsFromBitmap(rootEvent.OpKindBitmapU256)
+		if err != nil {
+			c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
+			return
+		}
+		if len(opKindTopics) > 0 {
+			leafLogs = agentkeysEvmAPI.API_GetLogsForAgentKeys(c.Request.Context(), "block_num desc, `index` desc", int(rootEvent.EntryCount),
+				model.Where("address = ?", agentkeysAuditContractAddress()),
+				model.Where("method_hash = ?", agentkeys.AuditAppendedV2Topic),
+				model.Where("topic1 = ?", rootEvent.OperatorOmni),
+				model.Where("topic3 in ?", opKindTopics),
+				model.Where("(block_num < ? OR (block_num = ? AND `index` < ?))", rootBlock, rootBlock, rootLogIndex),
+			)
+		}
 	}
 
 	rows, err := agentkeys.DecodeAuditRootRows(c.Request.Context(), rootRecord, toAgentKeysLogs(leafLogs), agentkeysAuditWorkerURL(), agentkeysEnvelopeCache)

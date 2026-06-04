@@ -52,8 +52,8 @@ func (s *Service) GetTransferCursor(ctx context.Context, addr string, blockNum u
 	}
 	list, hasPrev, hasNext := dao.TransfersCursor(ctx, s.d, limit, before, after, opts...)
 	for index := range list {
-		list[index].Sender = address.Encode(list[index].Sender)
-		list[index].Receiver = address.Encode(list[index].Receiver)
+		list[index].Sender = encodeTransferAddress(list[index].Sender)
+		list[index].Receiver = encodeTransferAddress(list[index].Receiver)
 	}
 	var start, end *uint
 	if len(list) > 0 {
@@ -66,6 +66,13 @@ func (s *Service) GetTransferCursor(ctx context.Context, addr string, blockNum u
 		"has_previous_page": hasPrev,
 		"has_next_page":     hasNext,
 	}
+}
+
+func encodeTransferAddress(addr string) string {
+	if address.Format(addr) == "" {
+		return addr
+	}
+	return address.Encode(addr)
 }
 
 func New(d storage.Dao, pool subscan_plugin.RedisPool) *Service {

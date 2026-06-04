@@ -97,6 +97,10 @@ type Transfer struct {
 	Symbol         string          `json:"symbol" gorm:"size:255"`
 	TokenId        string          `json:"token_id" gorm:"size:255"`
 	ExtrinsicIndex string          `json:"extrinsic_index" gorm:"size:255;index:extrinsic_index"`
+	Category       string          `json:"category" gorm:"size:64;index"`
+	SourceModule   string          `json:"source_module" gorm:"size:64;index"`
+	SourceEvent    string          `json:"source_event" gorm:"size:64;index"`
+	BalanceEvent   string          `json:"balance_event" gorm:"size:64"`
 }
 
 func (a *Transfer) TableName() string {

@@ -227,10 +227,14 @@ export type transferType = {
     amount: string
     blockNum: number
     block_timestamp: number
+    balance_event?: string
+    category?: string
     extrinsic_index: string
     id: number
     receiver: string
     sender: string
+    source_event?: string
+    source_module?: string
     symbol: string
     token_id: string
 }

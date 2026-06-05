@@ -213,6 +213,7 @@ func RefreshAllAccount(sg *Storage, options ...RefreshAllAccountOptions) error {
 func InitTransfer(sg *Storage) {
 	c := context.TODO()
 	db := sg.Dao.GetDbInstance().(*gorm.DB)
+	MarkMissingTransferMetadata(c, db)
 
 	blockNum, _ := sg.Dao.GetCurrentBlockNum(c)
 	for i := int(blockNum); i >= 0; i -= int(model.SplitTableBlockNum) {
@@ -235,16 +236,80 @@ func InitTransfer(sg *Storage) {
 				blocks[b.BlockNum] = b
 			}
 
-			var extrinsicIds []string
-			for _, e := range events {
-				extrinsicIds = append(extrinsicIds, e.ExtrinsicIndex)
-			}
 			for index := range events {
 				event := events[index]
 				_ = EmitEvent(c, sg, event.AsPlugin(), blocks[int(event.BlockNum)])
 			}
 			return nil
 		})
+		backfillOmniBridgePayoutTransfers(c, sg, db, tableName)
 	}
 
+}
+
+func MarkMissingTransferMetadata(ctx context.Context, db *gorm.DB) error {
+	return db.WithContext(ctx).
+		Model(&bModel.Transfer{}).
+		Where(
+			"category = '' OR category IS NULL OR source_module = '' OR source_module IS NULL OR source_event = '' OR source_event IS NULL OR balance_event = '' OR balance_event IS NULL",
+		).
+		Updates(map[string]interface{}{
+			"category":      TransferCategoryTransfer,
+			"source_module": TransferSourceBalances,
+			"source_event":  TransferEventTransfer,
+			"balance_event": TransferEventTransfer,
+		}).Error
+}
+
+func backfillOmniBridgePayoutTransfers(ctx context.Context, sg *Storage, db *gorm.DB, tableName string) {
+	var paidOutEvents []*model.ChainEvent
+	query := db.Table(tableName).
+		Where("LOWER(module_id) = ?", TransferSourceOmniBridge).
+		Where("LOWER(event_id) = ?", strings.ToLower(TransferEventPaidOut))
+	query.FindInBatches(&paidOutEvents, 50000, func(tx *gorm.DB, batch int) error {
+		extrinsicSeen := make(map[string]bool)
+		var extrinsicIds []string
+		for _, e := range paidOutEvents {
+			if e.ExtrinsicIndex == "" || extrinsicSeen[e.ExtrinsicIndex] {
+				continue
+			}
+			extrinsicSeen[e.ExtrinsicIndex] = true
+			extrinsicIds = append(extrinsicIds, e.ExtrinsicIndex)
+		}
+		if len(extrinsicIds) == 0 {
+			return nil
+		}
+
+		var groupedEvents []*model.ChainEvent
+		if err := tx.Table(tableName).
+			Where("extrinsic_index IN ?", extrinsicIds).
+			Where("(LOWER(module_id) = ? AND LOWER(event_id) = ?) OR (LOWER(module_id) = ? AND LOWER(event_id) = ?)",
+				TransferSourceOmniBridge, strings.ToLower(TransferEventPaidOut),
+				TransferSourceBalances, strings.ToLower(TransferEventMinted),
+			).
+			Order("id asc").
+			Find(&groupedEvents).Error; err != nil {
+			return err
+		}
+
+		var blockNums []uint
+		eventsByExtrinsic := make(map[string][]storage.Event)
+		for _, e := range groupedEvents {
+			eventsByExtrinsic[e.ExtrinsicIndex] = append(eventsByExtrinsic[e.ExtrinsicIndex], *e.AsPlugin())
+			if strings.EqualFold(e.ModuleId, TransferSourceBalances) && strings.EqualFold(e.EventId, TransferEventMinted) {
+				blockNums = append(blockNums, e.BlockNum)
+			}
+		}
+		blocks := make(map[int]*storage.Block)
+		for _, b := range sg.Dao.GetBlocksByNums(ctx, blockNums, "id,block_num,block_timestamp") {
+			blocks[b.BlockNum] = b
+		}
+		for _, events := range eventsByExtrinsic {
+			if len(events) == 0 {
+				continue
+			}
+			_ = CreateOmniBridgePayoutTransfers(ctx, sg, events, blocks[events[0].BlockNum])
+		}
+		return nil
+	})
 }

@@ -9,6 +9,11 @@ import (
 )
 
 func CreateTransfer(ctx context.Context, d *Storage, transfer *bModel.Transfer) error {
+	_, err := CreateTransferIfMissing(ctx, d, transfer)
+	return err
+}
+
+func CreateTransferIfMissing(ctx context.Context, d *Storage, transfer *bModel.Transfer) (bool, error) {
 	db := d.Dao.GetDbInstance().(*gorm.DB)
 	query := db.WithContext(ctx).Scopes(model.IgnoreDuplicate).Create(transfer)
 	if query.RowsAffected > 0 {
@@ -16,7 +21,7 @@ func CreateTransfer(ctx context.Context, d *Storage, transfer *bModel.Transfer) 
 		_ = RefreshAccount(ctx, d, model.CheckoutParamValueAddress(transfer.Sender))
 		_ = RefreshAccount(ctx, d, model.CheckoutParamValueAddress(transfer.Receiver))
 	}
-	return query.Error
+	return query.RowsAffected > 0, query.Error
 }
 
 func TransfersCursor(ctx context.Context, db storage.DB, limit int, before, after *uint, opts ...model.Option) ([]bModel.Transfer, bool, bool) {

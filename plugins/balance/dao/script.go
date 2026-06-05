@@ -213,7 +213,7 @@ func RefreshAllAccount(sg *Storage, options ...RefreshAllAccountOptions) error {
 func InitTransfer(sg *Storage) {
 	c := context.TODO()
 	db := sg.Dao.GetDbInstance().(*gorm.DB)
-	MarkMissingTransferMetadata(c, db)
+	_ = MarkMissingTransferMetadata(c, db)
 
 	blockNum, _ := sg.Dao.GetCurrentBlockNum(c)
 	for i := int(blockNum); i >= 0; i -= int(model.SplitTableBlockNum) {
@@ -242,9 +242,39 @@ func InitTransfer(sg *Storage) {
 			}
 			return nil
 		})
-		backfillOmniBridgePayoutTransfers(c, sg, db, tableName)
+		_, _ = backfillOmniBridgePayoutTransfers(c, sg, db, tableName)
 	}
 
+}
+
+type BackfillOmniBridgePayoutTransfersResult struct {
+	TablesScanned     int
+	ExtrinsicsMatched int
+	Candidates        int
+	Inserted          int
+}
+
+func BackfillOmniBridgePayoutTransfers(sg *Storage) (BackfillOmniBridgePayoutTransfersResult, error) {
+	ctx := context.Background()
+	db := sg.Dao.GetDbInstance().(*gorm.DB)
+	result := BackfillOmniBridgePayoutTransfersResult{}
+	if err := MarkMissingTransferMetadata(ctx, db); err != nil {
+		return result, err
+	}
+
+	blockNum, _ := sg.Dao.GetCurrentBlockNum(ctx)
+	for i := int(blockNum); i >= 0; i -= int(model.SplitTableBlockNum) {
+		tableName := model.TableNameFromInterface(&model.ChainEvent{BlockNum: uint(i)}, db)
+		result.TablesScanned++
+		tableResult, err := backfillOmniBridgePayoutTransfers(ctx, sg, db, tableName)
+		if err != nil {
+			return result, err
+		}
+		result.ExtrinsicsMatched += tableResult.ExtrinsicsMatched
+		result.Candidates += tableResult.Candidates
+		result.Inserted += tableResult.Inserted
+	}
+	return result, nil
 }
 
 func MarkMissingTransferMetadata(ctx context.Context, db *gorm.DB) error {
@@ -261,12 +291,13 @@ func MarkMissingTransferMetadata(ctx context.Context, db *gorm.DB) error {
 		}).Error
 }
 
-func backfillOmniBridgePayoutTransfers(ctx context.Context, sg *Storage, db *gorm.DB, tableName string) {
+func backfillOmniBridgePayoutTransfers(ctx context.Context, sg *Storage, db *gorm.DB, tableName string) (BackfillOmniBridgePayoutTransfersResult, error) {
+	result := BackfillOmniBridgePayoutTransfersResult{TablesScanned: 1}
 	var paidOutEvents []*model.ChainEvent
 	query := db.Table(tableName).
 		Where("LOWER(module_id) = ?", TransferSourceOmniBridge).
 		Where("LOWER(event_id) = ?", strings.ToLower(TransferEventPaidOut))
-	query.FindInBatches(&paidOutEvents, 50000, func(tx *gorm.DB, batch int) error {
+	batchResult := query.FindInBatches(&paidOutEvents, 50000, func(tx *gorm.DB, batch int) error {
 		extrinsicSeen := make(map[string]bool)
 		var extrinsicIds []string
 		for _, e := range paidOutEvents {
@@ -279,6 +310,7 @@ func backfillOmniBridgePayoutTransfers(ctx context.Context, sg *Storage, db *gor
 		if len(extrinsicIds) == 0 {
 			return nil
 		}
+		result.ExtrinsicsMatched += len(extrinsicIds)
 
 		var groupedEvents []*model.ChainEvent
 		if err := tx.Table(tableName).
@@ -308,8 +340,18 @@ func backfillOmniBridgePayoutTransfers(ctx context.Context, sg *Storage, db *gor
 			if len(events) == 0 {
 				continue
 			}
-			_ = CreateOmniBridgePayoutTransfers(ctx, sg, events, blocks[events[0].BlockNum])
+			candidates := len(OmniBridgePayoutTransfers(events, blocks[events[0].BlockNum]))
+			inserted, err := CreateOmniBridgePayoutTransfersWithResult(ctx, sg, events, blocks[events[0].BlockNum])
+			if err != nil {
+				return err
+			}
+			result.Candidates += candidates
+			result.Inserted += inserted
 		}
 		return nil
 	})
+	if batchResult.Error != nil {
+		return result, batchResult.Error
+	}
+	return result, nil
 }

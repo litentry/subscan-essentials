@@ -86,12 +86,22 @@ func BalanceTransferFromEvent(event *storage.Event, block *storage.Block) *bMode
 }
 
 func CreateOmniBridgePayoutTransfers(ctx context.Context, d *Storage, events []storage.Event, block *storage.Block) error {
+	_, err := CreateOmniBridgePayoutTransfersWithResult(ctx, d, events, block)
+	return err
+}
+
+func CreateOmniBridgePayoutTransfersWithResult(ctx context.Context, d *Storage, events []storage.Event, block *storage.Block) (int, error) {
+	var inserted int
 	for _, transfer := range OmniBridgePayoutTransfers(events, block) {
-		if err := CreateTransfer(ctx, d, transfer); err != nil {
-			return err
+		created, err := CreateTransferIfMissing(ctx, d, transfer)
+		if err != nil {
+			return inserted, err
+		}
+		if created {
+			inserted++
 		}
 	}
-	return nil
+	return inserted, nil
 }
 
 func OmniBridgePayoutTransfers(events []storage.Event, block *storage.Block) []*bModel.Transfer {

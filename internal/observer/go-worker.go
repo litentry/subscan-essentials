@@ -15,6 +15,11 @@ import (
 	"time"
 )
 
+type pluginExtrinsicArgs struct {
+	ExtrinsicIndex string `json:"extrinsic_index"`
+	PluginName     string `json:"plugin_name"`
+}
+
 func Consumption() {
 	concurrency := util.StringToInt(util.GetEnv("WORKER_GOROUTINE_COUNT", "10"))
 	workers.Process("block", emitMsg, concurrency)
@@ -82,11 +87,7 @@ func emitMsg(message *workers.Msg) {
 			return p.ProcessEvent(block, event, decimal.Zero)
 
 		case "plugin-extrinsic":
-			type T struct {
-				ExtrinsicIndex string `json:"event_index"`
-				PluginName     string `json:"plugin_name"`
-			}
-			var args T
+			var args pluginExtrinsicArgs
 			if err := util.UnmarshalAny(&args, raw); err != nil {
 				panic(fmt.Errorf("plugin-block worker args unmarshal error: %s", err.Error()))
 			}

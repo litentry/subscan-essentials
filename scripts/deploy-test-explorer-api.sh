@@ -9,8 +9,11 @@ NETWORK="${NETWORK:-subscan-essentials_subscan_net}"
 
 MAIN_CONTAINER="${MAIN_CONTAINER:-subscan-essentials-subscan-api-1}"
 CROSSAGENT_CONTAINER="${CROSSAGENT_CONTAINER:-subscan-essentials-crossagent-subscan-api-crossagent-1}"
+OBSERVER_CONTAINER="${OBSERVER_CONTAINER:-subscan-essentials-subscan-observer-1}"
+WORKER_CONTAINER="${WORKER_CONTAINER:-subscan-essentials-subscan-worker-1}"
 MAIN_IMAGE="${MAIN_IMAGE:-subscan/api}"
 CROSSAGENT_IMAGE="${CROSSAGENT_IMAGE:-subscan/api:crossagent}"
+RUN_OMNIBRIDGE_BACKFILL="${RUN_OMNIBRIDGE_BACKFILL:-1}"
 
 MYSQL_PASSWORD="${MYSQL_PASSWORD:-subscan2024heima}"
 CHAIN_WS_ENDPOINT="${CHAIN_WS_ENDPOINT:-wss://rpc.heima-parachain.heima.network}"
@@ -84,6 +87,53 @@ replace_api_container() {
     "$image" >/dev/null
 }
 
+replace_runtime_container() {
+  local name="$1"
+  local image="$2"
+  local mysql_host="$3"
+  local redis_addr="$4"
+  shift 4
+
+  if run_sudo docker ps -a --format '{{.Names}}' | grep -Fxq "$name"; then
+    run_sudo docker rm -f "$name" >/dev/null
+  fi
+
+  run_sudo docker run -d \
+    --name "$name" \
+    --restart always \
+    --network "$NETWORK" \
+    -e "MYSQL_HOST=$mysql_host" \
+    -e "MYSQL_PASS=$MYSQL_PASSWORD" \
+    -e MYSQL_USER=root \
+    -e MYSQL_DB=subscan \
+    -e "REDIS_ADDR=$redis_addr" \
+    -e "CHAIN_WS_ENDPOINT=$CHAIN_WS_ENDPOINT" \
+    -e "ETH_RPC=$ETH_RPC" \
+    -e "NETWORK_NODE=$NETWORK_NODE" \
+    -e DEPLOY_ENV=prod \
+    "$image" "$@" >/dev/null
+}
+
+run_omnibridge_backfill() {
+  if [[ "$RUN_OMNIBRIDGE_BACKFILL" != "1" ]]; then
+    echo "Skipping OmniBridge backfill because RUN_OMNIBRIDGE_BACKFILL=$RUN_OMNIBRIDGE_BACKFILL."
+    return
+  fi
+
+  run_sudo docker run --rm \
+    --network "$NETWORK" \
+    -e MYSQL_HOST=mysql \
+    -e "MYSQL_PASS=$MYSQL_PASSWORD" \
+    -e MYSQL_USER=root \
+    -e MYSQL_DB=subscan \
+    -e REDIS_ADDR=redis:6379 \
+    -e "CHAIN_WS_ENDPOINT=$CHAIN_WS_ENDPOINT" \
+    -e "ETH_RPC=$ETH_RPC" \
+    -e "NETWORK_NODE=$NETWORK_NODE" \
+    -e DEPLOY_ENV=prod \
+    "$MAIN_IMAGE" plugin balance BackfillOmniBridgeTransfers
+}
+
 wait_for_api() {
   local host_port="$1"
   local body=""
@@ -111,6 +161,9 @@ main() {
 
   replace_api_container "$MAIN_CONTAINER" "$MAIN_IMAGE" 4399 mysql redis:6379
   wait_for_api 4399
+  run_omnibridge_backfill
+  replace_runtime_container "$OBSERVER_CONTAINER" "$MAIN_IMAGE" mysql redis:6379 start subscribe
+  replace_runtime_container "$WORKER_CONTAINER" "$MAIN_IMAGE" mysql redis:6379 start worker
 
   replace_api_container "$CROSSAGENT_CONTAINER" "$CROSSAGENT_IMAGE" 4599 subscan-essentials-mysql-1 subscan-essentials-redis-1:6379
   wait_for_api 4599
@@ -118,6 +171,8 @@ main() {
   run_sudo docker ps \
     --filter "name=$MAIN_CONTAINER" \
     --filter "name=$CROSSAGENT_CONTAINER" \
+    --filter "name=$OBSERVER_CONTAINER" \
+    --filter "name=$WORKER_CONTAINER" \
     --format '{{.Names}} {{.Image}} {{.Status}} {{.Ports}}'
 }
 

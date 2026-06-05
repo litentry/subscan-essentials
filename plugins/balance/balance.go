@@ -2,6 +2,9 @@ package balance
 
 import (
 	"context"
+	"fmt"
+	"strings"
+
 	"github.com/itering/subscan-plugin"
 	"github.com/itering/subscan-plugin/router"
 	"github.com/itering/subscan-plugin/storage"
@@ -12,7 +15,6 @@ import (
 	"github.com/itering/subscan/util/address"
 	"github.com/shopspring/decimal"
 	"github.com/urfave/cli"
-	"strings"
 )
 
 var srv *service.Service
@@ -67,6 +69,19 @@ func (a *Balance) Commands() []cli.Command {
 			Name: "InitTransfer",
 			Action: func(c *cli.Context) error {
 				dao.InitTransfer(a.storage())
+				return nil
+			},
+		},
+		{
+			Name:  "BackfillOmniBridgeTransfers",
+			Usage: "Backfill historical OmniBridge PaidOut + balances.Minted rows into balance_transfers",
+			Action: func(c *cli.Context) error {
+				result, err := dao.BackfillOmniBridgePayoutTransfers(a.storage())
+				if err != nil {
+					return err
+				}
+				_, _ = fmt.Fprintf(c.App.Writer, "BackfillOmniBridgeTransfers: tables=%d extrinsics=%d candidates=%d inserted=%d\n",
+					result.TablesScanned, result.ExtrinsicsMatched, result.Candidates, result.Inserted)
 				return nil
 			},
 		},

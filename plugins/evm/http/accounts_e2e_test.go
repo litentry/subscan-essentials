@@ -61,6 +61,21 @@ func TestAccountsRouteExcludesSmartContracts(t *testing.T) {
 	assert.Equal(t, eoa, response.Data.List[0].EvmAccount)
 	assert.NotEqual(t, contract, response.Data.List[0].EvmAccount)
 
+	request = httptest.NewRequest(
+		nethttp.MethodPost,
+		"/api/plugin/evm/accounts",
+		strings.NewReader(`{"address":"`+contract+`","row":10,"include_contracts":true}`),
+	)
+	recorder = httptest.NewRecorder()
+	handler.ServeHTTP(recorder, request)
+	require.Equal(t, nethttp.StatusOK, recorder.Code)
+
+	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+	require.Zero(t, response.Code)
+	require.Len(t, response.Data.List, 1)
+	assert.Equal(t, contract, response.Data.List[0].EvmAccount)
+	assert.Equal(t, decimal.NewFromInt(20), response.Data.List[0].Balance)
+
 	var pretty bytes.Buffer
 	require.NoError(t, json.Indent(&pretty, recorder.Body.Bytes(), "", "  "))
 	t.Logf("POST /api/plugin/evm/accounts response with seeded evm_accounts and evm_contracts:\n%s", pretty.String())

@@ -739,6 +739,8 @@ definitions:
       before:
         minLength: 0
         type: string
+      include_contracts:
+        type: boolean
       row:
         maximum: 100
         minimum: 1

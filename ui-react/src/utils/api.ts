@@ -450,8 +450,8 @@ export type pvmAccountListType = {
     list: pvmAccountType[] | null
     count: number
     pagination: {
-      start_cursor: number,
-      end_cursor: number,
+      start_cursor: string,
+      end_cursor: string,
       has_next_page: boolean,
       has_previous_page: boolean
     }
@@ -460,9 +460,10 @@ export type pvmAccountListType = {
 export type getPVMAccountListParams = {
     page?: number
     row?: number
-    after?: number
-    before?: number
+    after?: string
+    before?: string
     address?: string
+    include_contracts?: boolean
 }
 
 export const usePVMAccounts = (host: string, data: getPVMAccountListParams) => {

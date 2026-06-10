@@ -2531,6 +2531,9 @@ const docTemplate = `{
                     "type": "string",
                     "minLength": 0
                 },
+                "include_contracts": {
+                    "type": "boolean"
+                },
                 "row": {
                     "type": "integer",
                     "maximum": 100,

@@ -3,7 +3,7 @@ import React, { useMemo } from 'react'
 import { BareProps } from '@/types/page'
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, getKeyValue, Spinner } from '@heroui/react'
 import { formatBalanceAmount, getThemeColor } from '@/utils/text'
-import { getExtrinsicListParams, unwrap, usePVMAccounts } from '@/utils/api'
+import { getPVMAccountListParams, unwrap, usePVMAccounts } from '@/utils/api'
 import { PAGE_SIZE } from '@/utils/const'
 import { useData } from '@/context'
 import BigNumber from 'bignumber.js'
@@ -12,13 +12,13 @@ import { CursorPagination } from '../cursorPagination'
 import { env } from 'next-runtime-env'
 
 interface Props extends BareProps {
-  args?: getExtrinsicListParams
+  args?: getPVMAccountListParams
 }
 
 const Component: React.FC<Props> = ({ children, className, args }) => {
   const { metadata, token } = useData()
   const [page, setPage] = React.useState(1)
-  const [cursor, setCursor] = React.useState<{ after?: number; before?: number }>({})
+  const [cursor, setCursor] = React.useState<{ after?: string; before?: string }>({})
   const rowsPerPage = PAGE_SIZE
   const NEXT_PUBLIC_API_HOST = env('NEXT_PUBLIC_API_HOST') || ''
   const { data, isLoading } = usePVMAccounts(NEXT_PUBLIC_API_HOST, {

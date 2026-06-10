@@ -24,6 +24,7 @@ export default function Page() {
 
   const { data: accountsData, isLoading } = usePVMAccounts(NEXT_PUBLIC_API_HOST, {
     address: id,
+    include_contracts: true,
     row: 10,
     page: 0,
   })

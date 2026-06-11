@@ -4,8 +4,6 @@ import (
 	"context"
 	"fmt"
 	"github.com/itering/subscan/model"
-	"github.com/itering/subscan/pkg/go-web3/complex/types"
-	"github.com/itering/subscan/pkg/go-web3/dto"
 	balanceModel "github.com/itering/subscan/plugins/balance/model"
 	"github.com/itering/subscan/share/web3"
 	"github.com/itering/subscan/util"
@@ -529,7 +527,7 @@ func (a *ApiSrv) AccountsCursor(ctx context.Context, address string, includeCont
 	}
 	q.Limit(fetch).Scan(&list)
 	if singleAddressWithContracts {
-		if balance, ok := latestEvmContractDisplayBalance(ctx, address); ok {
+		if balance, ok := latestEvmNativeBalance(ctx, address); ok {
 			if len(list) == 0 {
 				list = append(list, AccountsJson{EvmAccount: address, Balance: balance})
 			} else {
@@ -564,41 +562,11 @@ func (a *ApiSrv) AccountsCursor(ctx context.Context, address string, includeCont
 	return list, map[string]interface{}{"start_cursor": start, "end_cursor": end, "has_previous_page": hasPrev, "has_next_page": hasNext}
 }
 
-func latestEvmContractDisplayBalance(ctx context.Context, address string) (decimal.Decimal, bool) {
-	nativeBalance, nativeOK := latestEvmNativeBalance(ctx, address)
-	depositBalance, depositOK := latestEvmContractDepositBalance(ctx, address)
-	if depositOK {
-		if nativeOK {
-			return nativeBalance.Add(depositBalance), true
-		}
-		return depositBalance, true
-	}
-	return nativeBalance, nativeOK
-}
-
 func latestEvmNativeBalance(ctx context.Context, address string) (decimal.Decimal, bool) {
 	if web3.RPC == nil || web3.RPC.Eth == nil {
 		return decimal.Zero, false
 	}
 	balance, err := web3.RPC.Eth.GetBalance(ctx, address, "latest")
-	if err != nil || balance == nil {
-		return decimal.Zero, false
-	}
-	return decimal.NewFromBigInt(balance, 0), true
-}
-
-func latestEvmContractDepositBalance(ctx context.Context, address string) (decimal.Decimal, bool) {
-	if web3.RPC == nil || web3.RPC.Eth == nil {
-		return decimal.Zero, false
-	}
-	result, err := web3.RPC.Eth.Call(ctx, &dto.TransactionParameters{
-		To:   address,
-		Data: types.ComplexString("0xc399ec88"), // getDeposit()
-	})
-	if err != nil || result == nil {
-		return decimal.Zero, false
-	}
-	balance, err := result.ToBigInt()
 	if err != nil || balance == nil {
 		return decimal.Zero, false
 	}

@@ -5,7 +5,7 @@ import { Table, Pagination, TableHeader, TableColumn, TableBody, TableRow, Table
 import { getPVMAccountTokenListParams, getPVMTokenTransferListParams, pvmTokenType, unwrap, usePVMAccountTokens } from '@/utils/api'
 import { PAGE_SIZE } from '@/utils/const'
 import BigNumber from 'bignumber.js'
-import { formatHash, getBalanceAmount, getThemeColor, timeAgo } from '@/utils/text'
+import { formatBalanceAmount, formatHash, getThemeColor, timeAgo } from '@/utils/text'
 import { Link } from '../link'
 import { env } from 'next-runtime-env'
 
@@ -55,7 +55,7 @@ const Component: React.FC<Props> = ({ args, token, children, className }) => {
           <TableRow key={item.contract}>
             {(columnKey) => {
               if (columnKey === 'balance') {
-                return <TableCell>{getBalanceAmount(new BigNumber(item.balance), item.decimals).toFormat()}</TableCell>
+                return <TableCell>{formatBalanceAmount(new BigNumber(item.balance), item.decimals)}</TableCell>
               } else if (columnKey === 'name') {
                 return <TableCell>{`${item.name}(${item.symbol})`}</TableCell>
               } else if (columnKey === 'category') {

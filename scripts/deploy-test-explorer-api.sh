@@ -39,6 +39,8 @@ ensure_source() {
   fi
 
   git -C "$SRC_DIR" fetch --prune origin "$BRANCH"
+  git -C "$SRC_DIR" reset --hard
+  git -C "$SRC_DIR" clean -fdx -e .ci-deploy-owned
   git -C "$SRC_DIR" checkout -B "$BRANCH" "origin/$BRANCH"
   git -C "$SRC_DIR" reset --hard "origin/$BRANCH"
   git -C "$SRC_DIR" clean -fdx -e .ci-deploy-owned

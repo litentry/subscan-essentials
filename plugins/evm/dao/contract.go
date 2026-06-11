@@ -312,6 +312,11 @@ func backfillContractFromRuntimeCode(ctx context.Context, contractAddress string
 	return contract
 }
 
+func ContractExists(ctx context.Context, address string) bool {
+	var contract Contract
+	return sg.db.WithContext(ctx).Select("address").Where("address = ?", address).Take(&contract).Error == nil
+}
+
 func findEventIdentifiers(_ context.Context, abiRaw []byte) []byte {
 	var abiValue abi.ABI
 	_ = abiValue.UnmarshalJSON(abiRaw)

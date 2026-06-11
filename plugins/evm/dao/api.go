@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/itering/subscan/model"
 	balanceModel "github.com/itering/subscan/plugins/balance/model"
+	"github.com/itering/subscan/share/web3"
 	"github.com/itering/subscan/util"
 	"github.com/shopspring/decimal"
 	"strings"
@@ -25,8 +26,8 @@ type ISrv interface {
 	BlockByNum(ctx context.Context, blockNum uint) *EvmBlock
 	BlockByHash(ctx context.Context, hash string) *EvmBlock
 	TransactionsCursor(ctx context.Context, limit int, before, after *uint, opts ...model.Option) ([]TransactionSampleJson, map[string]interface{})
-	AccountsCursor(ctx context.Context, address string, limit int, before, after *string) ([]AccountsJson, map[string]interface{})
-	ContractsCursor(ctx context.Context, limit int, before, after *string) ([]ContractsJson, map[string]interface{})
+	AccountsCursor(ctx context.Context, address string, includeContracts bool, limit int, before, after *string) ([]AccountsJson, map[string]interface{})
+	ContractsCursor(ctx context.Context, limit int, before, after *string, verifiedSourceOnly bool) ([]ContractsJson, map[string]interface{})
 
 	AccountTokens(ctx context.Context, address, category string) []AccountTokenJson
 	CollectiblesCursor(ctx context.Context, address string, contract string, limit int, before, after *string) ([]Erc721Holders, map[string]interface{})
@@ -116,11 +117,11 @@ func transactionReceiptsToEtherscanLogs(ctx context.Context, list []TransactionR
 	return
 }
 
-func (a *ApiSrv) API_GetAccounts(ctx context.Context, h160 []string) (map[string]balanceModel.Account, error) {
+func (a *ApiSrv) API_GetAccounts(ctx context.Context, h160s []string) (map[string]balanceModel.Account, error) {
 	var addresses []string
 	var addr2H160 = make(map[string]string)
 
-	for _, v := range h160 {
+	for _, v := range h160s {
 		addr := h160ToAccountIdByNetwork(ctx, v, util.NetworkNode)
 		if addr == "" {
 			return nil, fmt.Errorf("address %s not a valid address", v)
@@ -135,6 +136,14 @@ func (a *ApiSrv) API_GetAccounts(ctx context.Context, h160 []string) (map[string
 	var accountMap = make(map[string]balanceModel.Account)
 	for _, v := range accounts {
 		accountMap[addr2H160[v.Address]] = v
+	}
+	for _, h160 := range h160s {
+		if balance, ok := latestEvmNativeBalance(ctx, h160); ok {
+			account := accountMap[h160]
+			account.Address = h160ToAccountIdByNetwork(ctx, h160, util.NetworkNode)
+			account.Balance = balance
+			accountMap[h160] = account
+		}
 	}
 	return accountMap, nil
 }
@@ -488,15 +497,24 @@ func (a AccountsJson) Cursor() string {
 	return util.Base64Encode(fmt.Sprintf("%s_%s", a.Balance.String(), a.EvmAccount))
 }
 
-func (a *ApiSrv) AccountsCursor(ctx context.Context, address string, limit int, before, after *string) ([]AccountsJson, map[string]interface{}) {
+func (a *ApiSrv) AccountsCursor(ctx context.Context, address string, includeContracts bool, limit int, before, after *string) ([]AccountsJson, map[string]interface{}) {
 	var list []AccountsJson
 	fetch := limit + 1
+	singleAddressWithContracts := includeContracts && address != ""
+	selectClause := "evm_accounts.evm_account,balance"
+	balanceJoin := "join balance_accounts on evm_accounts.address=balance_accounts.address"
+	if singleAddressWithContracts {
+		selectClause = "evm_accounts.evm_account,COALESCE(balance_accounts.balance,0) as balance"
+		balanceJoin = "left join balance_accounts on evm_accounts.address=balance_accounts.address"
+	}
 	q := sg.db.WithContext(ctx).
-		Select("evm_accounts.evm_account,balance").
+		Select(selectClause).
 		Model(&Account{}).
-		Joins("join balance_accounts on evm_accounts.address=balance_accounts.address").
-		Joins("left join evm_contracts on evm_contracts.address=evm_accounts.evm_account").
-		Where("evm_contracts.address IS NULL")
+		Joins(balanceJoin)
+	if !includeContracts {
+		q = q.Joins("left join evm_contracts on evm_contracts.address=evm_accounts.evm_account").
+			Where("evm_contracts.address IS NULL")
+	}
 	if address != "" {
 		q = q.Where("evm_account = ?", address)
 	}
@@ -508,6 +526,15 @@ func (a *ApiSrv) AccountsCursor(ctx context.Context, address string, limit int, 
 		q = q.Order("balance desc").Order("balance_accounts.address desc")
 	}
 	q.Limit(fetch).Scan(&list)
+	if singleAddressWithContracts {
+		if balance, ok := latestEvmNativeBalance(ctx, address); ok {
+			if len(list) == 0 {
+				list = append(list, AccountsJson{EvmAccount: address, Balance: balance})
+			} else {
+				list[0].Balance = balance
+			}
+		}
+	}
 	var hasPrev, hasNext bool
 	if before != nil && *before != "" {
 		hasPrev = len(list) > limit
@@ -535,6 +562,17 @@ func (a *ApiSrv) AccountsCursor(ctx context.Context, address string, limit int, 
 	return list, map[string]interface{}{"start_cursor": start, "end_cursor": end, "has_previous_page": hasPrev, "has_next_page": hasNext}
 }
 
+func latestEvmNativeBalance(ctx context.Context, address string) (decimal.Decimal, bool) {
+	if web3.RPC == nil || web3.RPC.Eth == nil {
+		return decimal.Zero, false
+	}
+	balance, err := web3.RPC.Eth.GetBalance(ctx, address, "latest")
+	if err != nil || balance == nil {
+		return decimal.Zero, false
+	}
+	return decimal.NewFromBigInt(balance, 0), true
+}
+
 type ContractsJson struct {
 	ContractName     string `json:"contract_name"`
 	Address          string `json:"address"`
@@ -546,10 +584,13 @@ func (c ContractsJson) Cursor() string {
 	return util.Base64Encode(fmt.Sprintf("%d_%s", c.TransactionCount, c.Address))
 }
 
-func (a *ApiSrv) ContractsCursor(ctx context.Context, limit int, before, after *string) ([]ContractsJson, map[string]interface{}) {
+func (a *ApiSrv) ContractsCursor(ctx context.Context, limit int, before, after *string, verifiedSourceOnly bool) ([]ContractsJson, map[string]interface{}) {
 	var list []ContractsJson
 	fetch := limit + 1
 	q := sg.db.WithContext(ctx).Model(&Contract{}).Select("contract_name,address,transaction_count,verify_status")
+	if verifiedSourceOnly {
+		q = q.Where("verify_status = ? AND source_code IS NOT NULL AND source_code <> ?", "verified", "")
+	}
 	if cursor := cursorDecode(after); len(cursor) == 2 {
 		q = q.Where("(transaction_count,address) < (?,?)", cursor[0], cursor[1]).Order("transaction_count desc").Order("address desc")
 	} else if cursor = cursorDecode(before); len(cursor) == 2 {

@@ -10,6 +10,13 @@ import (
 var (
 	ethAddressRegex       = regexp.MustCompile(`^0x[0-9a-fA-F]{40}$`)
 	substrateAddressRegex = regexp.MustCompile(`^[0-9a-fA-F]{64}$`)
+	hashRegex             = regexp.MustCompile(`^0x[0-9a-fA-F]{64}$`)
+)
+
+const (
+	SearchTypeHash             = "hash"
+	SearchTypeEvmAddress       = "evm_address"
+	SearchTypeSubstrateAddress = "address"
 )
 
 // SS58Address converts the address to SS58 format
@@ -33,6 +40,21 @@ func Encode(address string) string {
 // VerifySubstrateAddress checks if the address is a valid Substrate address
 func VerifySubstrateAddress(accountId string) bool {
 	return substrateAddressRegex.MatchString(util.TrimHex(accountId))
+}
+
+// DetectSearchType returns the obvious search target type without touching storage.
+func DetectSearchType(search string) string {
+	search = strings.TrimSpace(search)
+	switch {
+	case VerifyEthereumAddress(search):
+		return SearchTypeEvmAddress
+	case hashRegex.MatchString(search):
+		return SearchTypeHash
+	case VerifySubstrateAddress(search), ss58.Decode(search) != "":
+		return SearchTypeSubstrateAddress
+	default:
+		return ""
+	}
 }
 
 // Decode converts the address to Substrate public key or Ethereum format, depending on the address type Ethereum or Substrate

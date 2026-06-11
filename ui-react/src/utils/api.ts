@@ -28,6 +28,14 @@ const runtimeFetcher = ([host, url, data]: [string, string, any]) => {
     return axiosInstance.post((host || API_HOST) + url, data).then((res) => res.data)
 }
 
+export type searchHashType = {
+    hash_type: string
+}
+
+export async function checkSearchHash(host: string, data: { hash: string }): Promise<APIWrapperProps<searchHashType>> {
+    return runtimeFetcher([host, '/api/scan/check_hash', data])
+}
+
 // const postFetcher = ([url, data]: [string, any]) => {
 //     return axiosInstance.post('/api/proxy', {
 //         path: url,
@@ -219,10 +227,14 @@ export type transferType = {
     amount: string
     blockNum: number
     block_timestamp: number
+    balance_event?: string
+    category?: string
     extrinsic_index: string
     id: number
     receiver: string
     sender: string
+    source_event?: string
+    source_module?: string
     symbol: string
     token_id: string
 }
@@ -450,8 +462,8 @@ export type pvmAccountListType = {
     list: pvmAccountType[] | null
     count: number
     pagination: {
-      start_cursor: number,
-      end_cursor: number,
+      start_cursor: string,
+      end_cursor: string,
       has_next_page: boolean,
       has_previous_page: boolean
     }
@@ -460,9 +472,10 @@ export type pvmAccountListType = {
 export type getPVMAccountListParams = {
     page?: number
     row?: number
-    after?: number
-    before?: number
+    after?: string
+    before?: string
     address?: string
+    include_contracts?: boolean
 }
 
 export const usePVMAccounts = (host: string, data: getPVMAccountListParams) => {
@@ -650,6 +663,7 @@ export type getPVMContractListParams = {
     row?: number
     after?: number
     before?: number
+    verified_source?: boolean
 }
 
 type getPVMContractParams = {

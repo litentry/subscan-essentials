@@ -1,8 +1,8 @@
-import React, { useMemo } from 'react'
+import React from 'react'
 
 import { BareProps } from '@/types/page'
 import { Table, TableHeader, TableColumn, TableBody, TableRow, TableCell, getKeyValue, Spinner } from '@heroui/react'
-import { formatHash, getBalanceAmount, getThemeColor, timeAgo } from '@/utils/text'
+import { formatBalanceAmount, formatHash, getThemeColor, timeAgo } from '@/utils/text'
 import { getTransferListParams, unwrap, useTransfers } from '@/utils/api'
 import { PAGE_SIZE } from '@/utils/const'
 import { useData } from '@/context'
@@ -15,8 +15,18 @@ interface Props extends BareProps {
   args?: getTransferListParams
 }
 
+const categoryLabels: Record<string, string> = {
+  transfer: 'Transfer',
+  bridge_in: 'Bridge In',
+  bridge_out: 'Bridge Out',
+}
+
+const syntheticSenderLabels: Record<string, string> = {
+  omnibridge: 'OmniBridge',
+}
+
 const Component: React.FC<Props> = ({ children, className, args }) => {
-  const { metadata, token } = useData()
+  const { token } = useData()
   const [page, setPage] = React.useState(1)
   const [cursor, setCursor] = React.useState<{ after?: number; before?: number }>({})
   const rowsPerPage = PAGE_SIZE
@@ -46,20 +56,14 @@ const Component: React.FC<Props> = ({ children, className, args }) => {
   return (
     <Table
       aria-label="Table"
-      bottomContent={
-        <CursorPagination
-          pagination={pagination}
-          onPrevious={handlePrevious}
-          onNext={handleNext}
-          color={getThemeColor(true)}
-        />
-      }
+      bottomContent={<CursorPagination pagination={pagination} onPrevious={handlePrevious} onNext={handleNext} color={getThemeColor(true)} />}
       classNames={{
         wrapper: 'min-h-[222px]',
         td: 'h-[50px]',
       }}>
       <TableHeader>
         <TableColumn key="event_idx">Event ID</TableColumn>
+        <TableColumn key="category">Type</TableColumn>
         <TableColumn key="sender">From</TableColumn>
         <TableColumn key="receiver">To</TableColumn>
         <TableColumn key="amount">{`Value (${token?.symbol})`}</TableColumn>
@@ -81,10 +85,16 @@ const Component: React.FC<Props> = ({ children, className, args }) => {
               } else if (columnKey === 'block_timestamp') {
                 return <TableCell>{timeAgo(item.block_timestamp)}</TableCell>
               } else if (columnKey === 'amount') {
-                return <TableCell>{getBalanceAmount(new BigNumber(item.amount), token?.decimals).toFormat()}</TableCell>
+                return <TableCell>{formatBalanceAmount(new BigNumber(item.amount), token?.decimals)}</TableCell>
+              } else if (columnKey === 'category') {
+                return <TableCell>{categoryLabels[item.category || 'transfer'] || item.category || 'Transfer'}</TableCell>
               }
               if (columnKey === 'sender' || columnKey === 'receiver') {
                 const address = columnKey === 'sender' ? item.sender : item.receiver
+                const syntheticLabel = syntheticSenderLabels[address]
+                if (syntheticLabel) {
+                  return <TableCell>{syntheticLabel}</TableCell>
+                }
                 return (
                   <TableCell>
                     <Link color={getThemeColor(true)} href={`/sub/account/${address}`}>

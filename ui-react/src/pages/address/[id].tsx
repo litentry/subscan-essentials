@@ -1,7 +1,7 @@
 import React from 'react'
 import { CardBody, Card, Tabs, Tab } from '@heroui/react'
 import { useRouter } from 'next/router'
-import { getBalanceAmount, getThemeColor } from '@/utils/text'
+import { formatBalanceAmount, getThemeColor } from '@/utils/text'
 import { unwrap, usePVMAccounts } from '@/utils/api'
 import { useData } from '@/context'
 import BigNumber from 'bignumber.js'
@@ -44,7 +44,7 @@ export default function Page() {
                     <div className="flex items-center">
                       <div className="w-48">Balance</div>
                       <div>
-                        {getBalanceAmount(new BigNumber(accountData.balance), token?.decimals).toFormat()} {token?.symbol}
+                        {formatBalanceAmount(new BigNumber(accountData.balance), token?.decimals)} {token?.symbol}
                       </div>
                     </div>
                   </CardBody>

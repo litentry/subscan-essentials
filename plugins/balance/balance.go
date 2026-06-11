@@ -33,9 +33,34 @@ func (a *Balance) Commands() []cli.Command {
 		},
 		{
 			Name: "RefreshAllAccount",
+			Flags: []cli.Flag{
+				cli.IntFlag{Name: "limit", Value: 10, Usage: "max accounts to refresh in this batch"},
+				cli.UintFlag{Name: "start-id", Usage: "refresh accounts with id greater than this value"},
+				cli.IntFlag{Name: "sleep-seconds", Value: 3, Usage: "seconds to sleep after each account refresh"},
+				cli.StringFlag{Name: "mode", Value: "resume", Usage: "progress mode: resume or reset"},
+			},
 			Action: func(c *cli.Context) error {
-				dao.RefreshAllAccount(a.storage())
-				return nil
+				return dao.RefreshAllAccount(a.storage(), dao.RefreshAllAccountOptions{
+					Limit:        c.Int("limit"),
+					StartID:      c.Uint("start-id"),
+					SleepSeconds: c.Int("sleep-seconds"),
+					Mode:         c.String("mode"),
+					StartIDSet:   c.IsSet("start-id"),
+				})
+			},
+		},
+		{
+			Name:  "RefreshAccount",
+			Usage: "Refresh one account balance from chain storage",
+			Flags: []cli.Flag{
+				cli.StringFlag{Name: "address", Usage: "account SS58 address or account id"},
+			},
+			Action: func(c *cli.Context) error {
+				account := c.String("address")
+				if account == "" {
+					return cli.NewExitError("address is required", 1)
+				}
+				return dao.RefreshAccount(context.Background(), a.storage(), address.Decode(account))
 			},
 		},
 		{
@@ -90,8 +115,8 @@ func (a *Balance) InitHttp() []router.Http {
 	return http.Router(srv)
 }
 
-func (a *Balance) ProcessExtrinsic(*storage.Block, *storage.Extrinsic, []storage.Event) error {
-	return nil
+func (a *Balance) ProcessExtrinsic(block *storage.Block, _ *storage.Extrinsic, events []storage.Event) error {
+	return dao.CreateOmniBridgePayoutTransfers(context.TODO(), a.storage(), events, block)
 }
 
 func (a *Balance) ProcessEvent(block *storage.Block, event *storage.Event, _ decimal.Decimal) error {
@@ -107,7 +132,7 @@ func (a *Balance) ProcessEvent(block *storage.Block, event *storage.Event, _ dec
 }
 
 func (a *Balance) SubscribeExtrinsic() []string {
-	return nil
+	return []string{"omnibridge", "OmniBridge", "Omnibridge"}
 }
 
 func (a *Balance) SubscribeEvent() []string {

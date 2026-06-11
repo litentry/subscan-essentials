@@ -4,8 +4,8 @@ import { BareProps } from '@/types/page'
 import { themeType } from '@/utils/text'
 
 interface PaginationInfo {
-  start_cursor: number
-  end_cursor: number
+  start_cursor: number | string
+  end_cursor: number | string
   has_next_page: boolean
   has_previous_page: boolean
 }

@@ -197,11 +197,12 @@ func (t *Transaction) NewContract(ctx context.Context) error {
 		CreationCode:   t.InputData,
 		DeployAt:       t.BlockTimestamp,
 		BlockNum:       t.BlockNum,
+		TxHash:         t.Hash,
 		Deployer:       t.FromAddress,
 		ExtrinsicIndex: t.ExtrinsicIndex,
 		Precompile:     t.Precompile,
 	}
-	return sg.AddOrUpdateItem(ctx, contract, []string{"address"}, "creation_code", "deploy_at", "block_num", "deployer", "extrinsic_index", "precompile").Error
+	return sg.AddOrUpdateItem(ctx, contract, []string{"address"}, "creation_code", "deploy_at", "block_num", "tx_hash", "deployer", "extrinsic_index", "precompile").Error
 }
 
 func ContractAddr(ctx context.Context) (list []string) {

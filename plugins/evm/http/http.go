@@ -291,10 +291,11 @@ func transactionsHandle(w http.ResponseWriter, r *http.Request) error {
 }
 
 type EvmAccountParams struct {
-	Limit   int     `json:"row" validate:"min=1,max=100"`
-	Before  *string `json:"before" validate:"omitempty,min=0"`
-	After   *string `json:"after" validate:"omitempty,min=0"`
-	Address string  `json:"address" validate:"omitempty,eth_addr"`
+	Limit            int     `json:"row" validate:"min=1,max=100"`
+	Before           *string `json:"before" validate:"omitempty,min=0"`
+	After            *string `json:"after" validate:"omitempty,min=0"`
+	Address          string  `json:"address" validate:"omitempty,eth_addr"`
+	IncludeContracts bool    `json:"include_contracts"`
 }
 
 // @Summary Evm accounts list
@@ -310,7 +311,7 @@ func accountsHandle(w http.ResponseWriter, r *http.Request) error {
 		toJson(w, 10001, nil, err)
 		return nil
 	}
-	list, page := srv.AccountsCursor(r.Context(), p.Address, p.Limit, p.Before, p.After)
+	list, page := srv.AccountsCursor(r.Context(), p.Address, p.IncludeContracts, p.Limit, p.Before, p.After)
 	toJson(w, 0, map[string]interface{}{"list": list, "pagination": page}, nil)
 	return nil
 }

@@ -9,6 +9,8 @@ import (
 	"github.com/ethereum/go-ethereum/common"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/itering/subscan/model"
+	"github.com/itering/subscan/pkg/go-web3/complex/types"
+	"github.com/itering/subscan/pkg/go-web3/dto"
 	evmABI "github.com/itering/subscan/plugins/evm/abi"
 	evmContract "github.com/itering/subscan/plugins/evm/contract"
 	"github.com/itering/subscan/plugins/evm/feature/delegateProxy"
@@ -54,10 +56,11 @@ type Contract struct {
 	Precompile        uint           `json:"precompile"`
 	CompileSettings   datatypes.JSON `json:"CompileSettings"`
 
-	EipStandard          string `json:"eip_standard" gorm:"size:100"`
-	ProxyImplementation  string `json:"proxy_implementation" gorm:"size:64"`
-	ConstructorArguments string `json:"constructor_arguments" gorm:"type:string"`
-	DeployCodeHash       string `json:"deploy_code_hash" gorm:"size:70;index:deploy_code_hash;default:'';not null"`
+	EipStandard          string          `json:"eip_standard" gorm:"size:100"`
+	ProxyImplementation  string          `json:"proxy_implementation" gorm:"size:64"`
+	ConstructorArguments string          `json:"constructor_arguments" gorm:"type:string"`
+	DeployCodeHash       string          `json:"deploy_code_hash" gorm:"size:70;index:deploy_code_hash;default:'';not null"`
+	DepositBalance       decimal.Decimal `json:"deposit_balance" gorm:"-"`
 }
 
 type ContractSampleJson struct {
@@ -285,10 +288,32 @@ func ContractsByAddr(ctx context.Context, contracts string) (contract *Contract)
 		contract = &dbContract
 	}
 
+	if balance, ok := latestEvmContractDepositBalance(ctx, contract.Address); ok {
+		contract.DepositBalance = balance
+	}
+
 	if len(contract.Abi) > 0 && contract.Abi.String() != "null" {
 		contract.EventIdentifiers = findEventIdentifiers(ctx, contract.Abi)
 	}
 	return
+}
+
+func latestEvmContractDepositBalance(ctx context.Context, contractAddress string) (decimal.Decimal, bool) {
+	if web3.RPC == nil || web3.RPC.Eth == nil {
+		return decimal.Zero, false
+	}
+	result, err := web3.RPC.Eth.Call(ctx, &dto.TransactionParameters{
+		To:   contractAddress,
+		Data: types.ComplexString("0xc399ec88"), // getDeposit()
+	})
+	if err != nil || result == nil {
+		return decimal.Zero, false
+	}
+	balance, err := result.ToBigInt()
+	if err != nil || balance == nil {
+		return decimal.Zero, false
+	}
+	return decimal.NewFromBigInt(balance, 0), true
 }
 
 func backfillContractFromRuntimeCode(ctx context.Context, contractAddress string) *Contract {

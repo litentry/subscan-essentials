@@ -74,6 +74,13 @@ export default function Page() {
                       </div>
                     </div>
                     <Divider className="my-2.5" />
+                    <div className="flex items-center">
+                      <div className="w-48">Deposit Balance</div>
+                      <div>
+                        {formatBalanceAmount(new BigNumber(contractData.deposit_balance || 0), token?.decimals)} {token?.symbol}
+                      </div>
+                    </div>
+                    <Divider className="my-2.5" />
                   </CardBody>
                 </Card>
                 <Card>

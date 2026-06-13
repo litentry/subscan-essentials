@@ -1,7 +1,7 @@
 import React from 'react'
 import { CardBody, Card, Tabs, Tab, Divider } from '@heroui/react'
 import { useRouter } from 'next/router'
-import { formatBalanceAmount, getThemeColor } from '@/utils/text'
+import { formatBalanceAmount, getThemeColor, getUTCTime } from '@/utils/text'
 import { unwrap, usePVMAccounts, usePVMContract } from '@/utils/api'
 import { useData } from '@/context'
 import { TxTable } from '@/components/tx'
@@ -32,6 +32,7 @@ export default function Page() {
   const accountListData = unwrap(accountsData)
   const accountData = accountListData?.list?.[0]
   const contractData = unwrap(data)
+  const deployAt = Number(contractData?.deploy_at || 0)
 
   return (
     <PageContent>
@@ -62,15 +63,31 @@ export default function Page() {
                     <Divider className="my-2.5" />
                     <div className="flex items-center">
                       <div className="w-48">Create At</div>
-                      <div>
-                        <Link href={`/tx/${contractData.tx_hash}`}>{contractData.tx_hash}</Link>
-                      </div>
+                      <div>{deployAt > 0 ? getUTCTime(deployAt) : '-'}</div>
                     </div>
+                    {contractData.tx_hash && (
+                      <>
+                        <Divider className="my-2.5" />
+                        <div className="flex items-center">
+                          <div className="w-48">Create Tx</div>
+                          <div className="break-all">
+                            <Link href={`/tx/${contractData.tx_hash}`}>{contractData.tx_hash}</Link>
+                          </div>
+                        </div>
+                      </>
+                    )}
                     <Divider className="my-2.5" />
                     <div className="flex items-center">
                       <div className="w-48">Balance</div>
                       <div>
                         {formatBalanceAmount(new BigNumber(accountData?.balance || 0), token?.decimals)} {token?.symbol}
+                      </div>
+                    </div>
+                    <Divider className="my-2.5" />
+                    <div className="flex items-center">
+                      <div className="w-48">Deposit Balance</div>
+                      <div>
+                        {formatBalanceAmount(new BigNumber(contractData.deposit_balance || 0), token?.decimals)} {token?.symbol}
                       </div>
                     </div>
                     <Divider className="my-2.5" />

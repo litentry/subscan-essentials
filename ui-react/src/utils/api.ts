@@ -629,6 +629,7 @@ export type pvmContractInfoType = {
     deploy_at: number;
     deploy_code_hash: string;
     deployer: string;
+    deposit_balance: string;
     eip_standard: string;
     event_identifiers: any | null;
     evm_version: string;

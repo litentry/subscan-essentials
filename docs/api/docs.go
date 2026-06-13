@@ -1548,6 +1548,9 @@ const docTemplate = `{
                 "deployer": {
                     "type": "string"
                 },
+                "deposit_balance": {
+                    "type": "number"
+                },
                 "eip_standard": {
                     "type": "string"
                 },

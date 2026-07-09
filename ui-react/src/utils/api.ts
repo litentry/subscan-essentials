@@ -269,6 +269,8 @@ export type accountType = {
     nonce: string
     reserved: string
     vested?: string
+    account_type?: string
+    multisig_composer?: string
 }
 
 type getAccountParams = {

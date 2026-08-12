@@ -298,6 +298,8 @@ type EvmAccountParams struct {
 	IncludeContracts bool    `json:"include_contracts"`
 }
 
+const evmAccountUnavailableCode = 10003
+
 // @Summary Evm accounts list
 // @Tags EVM
 // @Accept json
@@ -311,7 +313,11 @@ func accountsHandle(w http.ResponseWriter, r *http.Request) error {
 		toJson(w, 10001, nil, err)
 		return nil
 	}
-	list, page := srv.AccountsCursor(r.Context(), p.Address, p.IncludeContracts, p.Limit, p.Before, p.After)
+	list, page, err := srv.AccountsCursor(r.Context(), p.Address, p.IncludeContracts, p.Limit, p.Before, p.After)
+	if err != nil {
+		toJson(w, evmAccountUnavailableCode, nil, dao.ErrEvmAccountUnavailable)
+		return nil
+	}
 	toJson(w, 0, map[string]interface{}{"list": list, "pagination": page}, nil)
 	return nil
 }

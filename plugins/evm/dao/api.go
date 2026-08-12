@@ -2,13 +2,17 @@ package dao
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
+
+	"github.com/go-kratos/kratos/v2/log"
 	"github.com/itering/subscan/model"
 	balanceModel "github.com/itering/subscan/plugins/balance/model"
 	"github.com/itering/subscan/share/web3"
 	"github.com/itering/subscan/util"
+	chainAddress "github.com/itering/subscan/util/address"
 	"github.com/shopspring/decimal"
-	"strings"
 )
 
 type ISrv interface {
@@ -26,7 +30,7 @@ type ISrv interface {
 	BlockByNum(ctx context.Context, blockNum uint) *EvmBlock
 	BlockByHash(ctx context.Context, hash string) *EvmBlock
 	TransactionsCursor(ctx context.Context, limit int, before, after *uint, opts ...model.Option) ([]TransactionSampleJson, map[string]interface{})
-	AccountsCursor(ctx context.Context, address string, includeContracts bool, limit int, before, after *string) ([]AccountsJson, map[string]interface{})
+	AccountsCursor(ctx context.Context, address string, includeContracts bool, limit int, before, after *string) ([]AccountsJson, map[string]interface{}, error)
 	ContractsCursor(ctx context.Context, limit int, before, after *string, verifiedSourceOnly bool) ([]ContractsJson, map[string]interface{})
 
 	AccountTokens(ctx context.Context, address, category string) []AccountTokenJson
@@ -40,7 +44,10 @@ type IPagination interface {
 	Cursor() string
 }
 
-type ApiSrv struct{}
+type ApiSrv struct {
+	nativeBalanceResolver func(context.Context, string) (decimal.Decimal, bool)
+	runtimeCodeResolver   func(context.Context, string) (string, bool)
+}
 
 type EtherscanLogsRes struct {
 	Address          string   `json:"address"`
@@ -138,7 +145,7 @@ func (a *ApiSrv) API_GetAccounts(ctx context.Context, h160s []string) (map[strin
 		accountMap[addr2H160[v.Address]] = v
 	}
 	for _, h160 := range h160s {
-		if balance, ok := latestEvmNativeBalance(ctx, h160); ok {
+		if balance, ok := a.evmNativeBalance(ctx, h160); ok {
 			account := accountMap[h160]
 			account.Address = h160ToAccountIdByNetwork(ctx, h160, util.NetworkNode)
 			account.Balance = balance
@@ -493,30 +500,26 @@ type AccountsJson struct {
 	Balance    decimal.Decimal `json:"balance"`
 }
 
+var ErrEvmAccountUnavailable = errors.New("EVM account data temporarily unavailable")
+
 func (a AccountsJson) Cursor() string {
 	return util.Base64Encode(fmt.Sprintf("%s_%s", a.Balance.String(), a.EvmAccount))
 }
 
-func (a *ApiSrv) AccountsCursor(ctx context.Context, address string, includeContracts bool, limit int, before, after *string) ([]AccountsJson, map[string]interface{}) {
+func (a *ApiSrv) AccountsCursor(ctx context.Context, address string, includeContracts bool, limit int, before, after *string) ([]AccountsJson, map[string]interface{}, error) {
+	if address != "" {
+		return a.accountByAddress(ctx, address, includeContracts)
+	}
+
 	var list []AccountsJson
 	fetch := limit + 1
-	singleAddressWithContracts := includeContracts && address != ""
-	selectClause := "evm_accounts.evm_account,balance"
-	balanceJoin := "join balance_accounts on evm_accounts.address=balance_accounts.address"
-	if singleAddressWithContracts {
-		selectClause = "evm_accounts.evm_account,COALESCE(balance_accounts.balance,0) as balance"
-		balanceJoin = "left join balance_accounts on evm_accounts.address=balance_accounts.address"
-	}
 	q := sg.db.WithContext(ctx).
-		Select(selectClause).
+		Select("evm_accounts.evm_account,balance").
 		Model(&Account{}).
-		Joins(balanceJoin)
+		Joins("join balance_accounts on evm_accounts.address=balance_accounts.address")
 	if !includeContracts {
 		q = q.Joins("left join evm_contracts on evm_contracts.address=evm_accounts.evm_account").
 			Where("evm_contracts.address IS NULL")
-	}
-	if address != "" {
-		q = q.Where("evm_account = ?", address)
 	}
 	if cursor := cursorDecode(after); len(cursor) == 2 {
 		q = q.Where("(balance,evm_account) < (?,?)", cursor[0], cursor[1]).Order("balance desc").Order("balance_accounts.address desc")
@@ -525,15 +528,9 @@ func (a *ApiSrv) AccountsCursor(ctx context.Context, address string, includeCont
 	} else {
 		q = q.Order("balance desc").Order("balance_accounts.address desc")
 	}
-	q.Limit(fetch).Scan(&list)
-	if singleAddressWithContracts {
-		if balance, ok := latestEvmNativeBalance(ctx, address); ok {
-			if len(list) == 0 {
-				list = append(list, AccountsJson{EvmAccount: address, Balance: balance})
-			} else {
-				list[0].Balance = balance
-			}
-		}
+	if err := q.Limit(fetch).Scan(&list).Error; err != nil {
+		log.Errorf("query EVM account list: %v", err)
+		return nil, nil, ErrEvmAccountUnavailable
 	}
 	var hasPrev, hasNext bool
 	if before != nil && *before != "" {
@@ -559,7 +556,92 @@ func (a *ApiSrv) AccountsCursor(ctx context.Context, address string, includeCont
 		start = &s
 		end = &e
 	}
-	return list, map[string]interface{}{"start_cursor": start, "end_cursor": end, "has_previous_page": hasPrev, "has_next_page": hasNext}
+	return list, map[string]interface{}{"start_cursor": start, "end_cursor": end, "has_previous_page": hasPrev, "has_next_page": hasNext}, nil
+}
+
+func (a *ApiSrv) accountByAddress(ctx context.Context, address string, includeContracts bool) ([]AccountsJson, map[string]interface{}, error) {
+	normalizedAddress := chainAddress.Format(address)
+	if normalizedAddress == "" {
+		return nil, singleAccountPagination(nil), nil
+	}
+
+	var indexedRows []AccountsJson
+	q := sg.db.WithContext(ctx).
+		Select("evm_accounts.evm_account").
+		Model(&Account{})
+	if !includeContracts {
+		q = q.Joins("left join evm_contracts on evm_contracts.address=evm_accounts.evm_account").
+			Where("evm_contracts.address IS NULL")
+	}
+	if err := q.Where("evm_accounts.evm_account = ?", normalizedAddress).Limit(1).Scan(&indexedRows).Error; err != nil {
+		log.Errorf("query EVM account detail for %s: %v", normalizedAddress, err)
+		return nil, nil, ErrEvmAccountUnavailable
+	}
+
+	if len(indexedRows) == 0 && !includeContracts {
+		isEOA, err := a.canSynthesizeEOA(ctx, normalizedAddress)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !isEOA {
+			return nil, singleAccountPagination(nil), nil
+		}
+	}
+
+	balance, ok := a.evmNativeBalance(ctx, normalizedAddress)
+	if !ok {
+		log.Errorf("query live EVM balance for %s: RPC unavailable", normalizedAddress)
+		return nil, nil, ErrEvmAccountUnavailable
+	}
+	if len(indexedRows) > 0 {
+		list := []AccountsJson{{EvmAccount: indexedRows[0].EvmAccount, Balance: balance}}
+		return list, singleAccountPagination(list), nil
+	}
+
+	list := []AccountsJson{{EvmAccount: normalizedAddress, Balance: balance}}
+	return list, singleAccountPagination(list), nil
+}
+
+func (a *ApiSrv) canSynthesizeEOA(ctx context.Context, address string) (bool, error) {
+	var indexedContracts int64
+	if err := sg.db.WithContext(ctx).Model(&Contract{}).Where("address = ?", address).Count(&indexedContracts).Error; err != nil {
+		log.Errorf("query indexed EVM contract for %s: %v", address, err)
+		return false, ErrEvmAccountUnavailable
+	}
+	if indexedContracts > 0 {
+		return false, nil
+	}
+	code, ok := a.evmRuntimeCode(ctx, address)
+	if !ok {
+		log.Errorf("query live EVM code for %s: RPC unavailable", address)
+		return false, ErrEvmAccountUnavailable
+	}
+	return util.TrimHex(code) == "", nil
+}
+
+func singleAccountPagination(list []AccountsJson) map[string]interface{} {
+	var start, end *string
+	if len(list) > 0 {
+		s := list[0].Cursor()
+		e := list[len(list)-1].Cursor()
+		start = &s
+		end = &e
+	}
+	return map[string]interface{}{"start_cursor": start, "end_cursor": end, "has_previous_page": false, "has_next_page": false}
+}
+
+func (a *ApiSrv) evmNativeBalance(ctx context.Context, address string) (decimal.Decimal, bool) {
+	if a != nil && a.nativeBalanceResolver != nil {
+		return a.nativeBalanceResolver(ctx, address)
+	}
+	return latestEvmNativeBalance(ctx, address)
+}
+
+func (a *ApiSrv) evmRuntimeCode(ctx context.Context, address string) (string, bool) {
+	if a != nil && a.runtimeCodeResolver != nil {
+		return a.runtimeCodeResolver(ctx, address)
+	}
+	return latestEvmRuntimeCode(ctx, address)
 }
 
 func latestEvmNativeBalance(ctx context.Context, address string) (decimal.Decimal, bool) {
@@ -571,6 +653,17 @@ func latestEvmNativeBalance(ctx context.Context, address string) (decimal.Decima
 		return decimal.Zero, false
 	}
 	return decimal.NewFromBigInt(balance, 0), true
+}
+
+func latestEvmRuntimeCode(ctx context.Context, address string) (string, bool) {
+	if web3.RPC == nil || web3.RPC.Eth == nil {
+		return "", false
+	}
+	code, err := web3.RPC.Eth.GetCode(ctx, address, "latest")
+	if err != nil {
+		return "", false
+	}
+	return code, true
 }
 
 type ContractsJson struct {

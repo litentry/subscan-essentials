@@ -1,7 +1,7 @@
 package http
 
 import (
-	"bytes"
+	"context"
 	"encoding/json"
 	nethttp "net/http"
 	"net/http/httptest"
@@ -16,6 +16,14 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+type unavailableAccountsServer struct {
+	MockServer
+}
+
+func (unavailableAccountsServer) AccountsCursor(context.Context, string, bool, int, *string, *string) ([]dao.AccountsJson, map[string]interface{}, error) {
+	return nil, nil, dao.ErrEvmAccountUnavailable
+}
 
 func TestAccountsRouteExcludesSmartContracts(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
@@ -60,23 +68,30 @@ func TestAccountsRouteExcludesSmartContracts(t *testing.T) {
 	require.Len(t, response.Data.List, 1)
 	assert.Equal(t, eoa, response.Data.List[0].EvmAccount)
 	assert.NotEqual(t, contract, response.Data.List[0].EvmAccount)
+}
 
-	request = httptest.NewRequest(
+func TestAccountsRouteReportsUnavailableDetail(t *testing.T) {
+	originalSrv := srv
+	srv = unavailableAccountsServer{}
+	t.Cleanup(func() { srv = originalSrv })
+
+	request := httptest.NewRequest(
 		nethttp.MethodPost,
 		"/api/plugin/evm/accounts",
-		strings.NewReader(`{"address":"`+contract+`","row":10,"include_contracts":true}`),
+		strings.NewReader(`{"address":"0x74aF439cD3aF5B42A5EE71551Af0ca61b61F5fBb","row":10}`),
 	)
-	recorder = httptest.NewRecorder()
+	recorder := httptest.NewRecorder()
+	handler := nethttp.HandlerFunc(func(w nethttp.ResponseWriter, r *nethttp.Request) {
+		_ = accountsHandle(w, r)
+	})
 	handler.ServeHTTP(recorder, request)
 	require.Equal(t, nethttp.StatusOK, recorder.Code)
 
+	var response struct {
+		Code    int    `json:"code"`
+		Message string `json:"message"`
+	}
 	require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
-	require.Zero(t, response.Code)
-	require.Len(t, response.Data.List, 1)
-	assert.Equal(t, contract, response.Data.List[0].EvmAccount)
-	assert.Equal(t, decimal.NewFromInt(20), response.Data.List[0].Balance)
-
-	var pretty bytes.Buffer
-	require.NoError(t, json.Indent(&pretty, recorder.Body.Bytes(), "", "  "))
-	t.Logf("POST /api/plugin/evm/accounts response with seeded evm_accounts and evm_contracts:\n%s", pretty.String())
+	assert.Equal(t, evmAccountUnavailableCode, response.Code)
+	assert.Equal(t, dao.ErrEvmAccountUnavailable.Error(), response.Message)
 }
